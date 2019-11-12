@@ -1,6 +1,10 @@
 package ie.aindriu.irc.client.impl;
 
+import java.util.List;
+
 import ie.aindriu.irc.client.Connection;
+import ie.aindriu.irc.client.command.Command;
+import ie.aindriu.irc.client.event.EventHandler;
 
 public class BasicIRCClient extends AbstractIRCClient {
 
@@ -9,9 +13,21 @@ public class BasicIRCClient extends AbstractIRCClient {
 	super(connection);
     }
     
-    public void register() {
-
+    public BasicIRCClient(Connection connection,List<EventHandler<String>> eventHandlers) {
+	super(connection, eventHandlers);
     }
 
+    @Override
+    public void register() {
+	// TODO Auto-generated method stub
+	
+    }
+
+    @Override
+    public void sendCommand(Command command) {
+	sendString(command.toString());
+	
+    }
+    
 
 }
