@@ -2,7 +2,7 @@ package ie.aindriu.irc.client;
 
 import ie.aindriu.irc.client.command.Command;
 
-public interface IRCClient {
+public interface Client {
 
     void connect();
     

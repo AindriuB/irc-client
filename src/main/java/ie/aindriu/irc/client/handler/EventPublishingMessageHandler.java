@@ -32,13 +32,14 @@ public abstract class EventPublishingMessageHandler<T> extends SimpleChannelInbo
 	    final Event<T> event = new Event<T>();
 	    event.setPayload(msg);
 	    event.setTimestamp(new Date());
-	    eventHandlers.stream().forEach(eh -> eh.publishEvent(event));
+	    eventHandlers.stream().filter(eh-> eh.getClass().getGenericSuperclass().equals(msg.getClass())).forEach(eh -> eh.publishEvent(event));
 	}
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
 	LOGGER.error("Error handling message", cause);
+	ctx.fireExceptionCaught(cause);
 	ctx.close();
     }
 
