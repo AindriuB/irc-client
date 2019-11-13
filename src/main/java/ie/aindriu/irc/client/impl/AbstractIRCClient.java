@@ -9,6 +9,8 @@ import org.slf4j.LoggerFactory;
 
 import ie.aindriu.irc.client.Connection;
 import ie.aindriu.irc.client.IRCClient;
+import ie.aindriu.irc.client.command.Command;
+import ie.aindriu.irc.client.command.Quit;
 import ie.aindriu.irc.client.event.EventHandler;
 import ie.aindriu.irc.client.handler.IRCEventPublishingMessageHandler;
 import io.netty.bootstrap.Bootstrap;
@@ -105,6 +107,11 @@ public abstract class AbstractIRCClient implements IRCClient {
 	}
 
     }
+    
+    @Override
+    public void sendCommand(Command command) {
+	sendString(command.toString());
+    }
 
     public void sendString(String message) {
 	
@@ -122,7 +129,7 @@ public abstract class AbstractIRCClient implements IRCClient {
     public void disconnect() {
 	LOGGER.info("Disconnecting");
 	try {
-	    sendString("QUIT");
+	    sendCommand(new Quit());
 	    f.channel().closeFuture().sync();
 	} catch (InterruptedException e) {
 	    LOGGER.error("Failed to close connection", e);

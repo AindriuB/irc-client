@@ -4,7 +4,7 @@ public class Who extends Command {
 
     private static final String BASE_COMMAND = "WHO";
     
-    protected Who(String nick) {
+    public Who(String nick) {
 	setCommand(BASE_COMMAND + nick);
     }
 

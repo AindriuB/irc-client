@@ -2,15 +2,15 @@ package ie.aindriu.irc.client.command;
 
 import java.util.List;
 
-public class Join extends Command {
+public class Part extends Command {
 
     private static final String BASE_COMMAND = "JOIN";
     
-    protected Join(String channel) {
+    protected Part(String channel) {
 	setCommand(BASE_COMMAND + channel);
     }
 
-    public Join(List<String> channels) {
+    public Part(List<String> channels) {
 	StringBuilder channelListBuilder = new StringBuilder();
 	channels.stream().forEach(c -> channelListBuilder.append(c + COMMA));
 	String channelList = channelListBuilder.substring(0, channelListBuilder.length() -1 );

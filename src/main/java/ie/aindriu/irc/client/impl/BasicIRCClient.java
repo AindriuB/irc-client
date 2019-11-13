@@ -23,11 +23,6 @@ public class BasicIRCClient extends AbstractIRCClient {
 	
     }
 
-    @Override
-    public void sendCommand(Command command) {
-	sendString(command.toString());
-	
-    }
     
 
 }
