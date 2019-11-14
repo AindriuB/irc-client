@@ -9,7 +9,7 @@ import ie.aindriu.irc.client.event.LoggingEventHandler;
 public class BasicClientTest {
 
     
-    private BasicClient client;
+    private BasicIRCClient client;
     
     @Before
     public void setUp() {
@@ -21,13 +21,13 @@ public class BasicClientTest {
 	
 	cb.eventListener(new LoggingEventHandler());
 	cb.outputStream(System.out);
-	client = new BasicClient(cb.build());
+	client = new BasicIRCClient(cb.build());
     }
     
     @Test
     public void testConnect() throws InterruptedException {
 	client.connect();
-	client.send("oauth:test".getBytes());
+	client.send("oauth:test");
 	client.disconnect();
     }
 

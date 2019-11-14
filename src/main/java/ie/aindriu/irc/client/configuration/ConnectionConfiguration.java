@@ -12,10 +12,13 @@ public class ConnectionConfiguration {
     
     private int connectionTimeout;
     
+    private int connectTimeout;
+    
     public ConnectionConfiguration() {
 	secure = true;
 	keepAlive = true;
 	connectionTimeout  = 5000;	
+	connectTimeout = 5000;
     }
     
     public String getHost() {
@@ -56,6 +59,14 @@ public class ConnectionConfiguration {
 
     public void setConnectionTimeout(int connectionTimeout) {
         this.connectionTimeout = connectionTimeout;
+    }
+
+    public int getConnectTimeout() {
+        return connectTimeout;
+    }
+
+    public void setConnectTimeout(int connectTimeout) {
+        this.connectTimeout = connectTimeout;
     }
 
     

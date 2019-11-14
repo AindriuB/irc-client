@@ -7,8 +7,6 @@ import org.slf4j.LoggerFactory;
 
 import ie.aindriu.irc.client.Client;
 import ie.aindriu.irc.client.configuration.ClientConfiguration;
-import ie.aindriu.irc.client.command.Command;
-import ie.aindriu.irc.client.command.Quit;
 import ie.aindriu.irc.client.handler.InboundMessageEventHandler;
 import ie.aindriu.irc.client.handler.OutputStreamWriterInboundMessageHandler;
 import io.netty.bootstrap.Bootstrap;
@@ -38,8 +36,7 @@ public abstract class AbstractClient implements Client {
     protected Bootstrap bootstrap;
     protected ChannelFuture channelFuture;
     protected EventLoopGroup workerGroup;
-
-    private ClientConfiguration configuration;
+    protected ClientConfiguration configuration;
 
     public AbstractClient(final ClientConfiguration configuration) {
 	this.configuration = configuration;
@@ -53,7 +50,9 @@ public abstract class AbstractClient implements Client {
 	bootstrap.group(workerGroup);
 	bootstrap.channel(NioSocketChannel.class);
 	bootstrap.option(ChannelOption.SO_KEEPALIVE, configuration.getConnection().isKeepAlive());
+	bootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, configuration.getConnection().getConnectionTimeout());
 	bootstrap.option(ChannelOption.AUTO_CLOSE, false);
+	bootstrap.handler(channelInitializer());
     }
 
     protected ChannelInitializer<SocketChannel> channelInitializer() {
@@ -85,7 +84,6 @@ public abstract class AbstractClient implements Client {
     public void connect() {
 	LOGGER.info("Connecting");
 	try {
-	    bootstrap.handler(channelInitializer());
 	    channelFuture = bootstrap.connect(configuration.getConnection().getHost(), configuration.getConnection().getPort());
 	    channelFuture.sync();
 	} catch (InterruptedException e) {
@@ -94,12 +92,8 @@ public abstract class AbstractClient implements Client {
 
     }
 
-    @Override
-    public void sendCommand(Command command) {
-	send(command.toString().getBytes(configuration.getCharSet()));
-    }
 
-    public void send(byte[] payload) {
+    public void send(String payload) {
 
 	if (!channelFuture.channel().isOpen()) {
 	    connect();
@@ -115,7 +109,6 @@ public abstract class AbstractClient implements Client {
     public void disconnect() {
 	LOGGER.info("Disconnecting");
 	try {
-	    sendCommand(new Quit());
 	    channelFuture.channel().closeFuture().sync();
 	} catch (InterruptedException e) {
 	    LOGGER.error("Failed to close connection", e);
