@@ -35,8 +35,8 @@ public abstract class AbstractClient implements Client {
     private static final int MAX_FRAME_SIZE = 2048;
 
     private SslContext sslContext;
-    protected Bootstrap b;
-    protected ChannelFuture f;
+    protected Bootstrap bootstrap;
+    protected ChannelFuture channelFuture;
     protected EventLoopGroup workerGroup;
 
     private ClientConfiguration configuration;
@@ -49,11 +49,11 @@ public abstract class AbstractClient implements Client {
 	    LOGGER.error("Couldn't get SSL context", e);
 	}
 	workerGroup = new NioEventLoopGroup();
-	b = new Bootstrap();
-	b.group(workerGroup);
-	b.channel(NioSocketChannel.class);
-	b.option(ChannelOption.SO_KEEPALIVE, configuration.getConnection().isKeepAlive());
-	b.option(ChannelOption.AUTO_CLOSE, false);
+	bootstrap = new Bootstrap();
+	bootstrap.group(workerGroup);
+	bootstrap.channel(NioSocketChannel.class);
+	bootstrap.option(ChannelOption.SO_KEEPALIVE, configuration.getConnection().isKeepAlive());
+	bootstrap.option(ChannelOption.AUTO_CLOSE, false);
     }
 
     protected ChannelInitializer<SocketChannel> channelInitializer() {
@@ -68,8 +68,8 @@ public abstract class AbstractClient implements Client {
 		if (configuration.isDebug()) {
 		    pipeline.addLast("loggingHandler", new LoggingHandler());
 		}
-		pipeline.addLast("stringDecoder", new StringDecoder());
-		pipeline.addLast("stringEncoder", new StringEncoder());
+		pipeline.addLast("stringDecoder", new StringDecoder(configuration.getCharSet()));
+		pipeline.addLast("stringEncoder", new StringEncoder(configuration.getCharSet()));
 		pipeline.addLast("frameDecoder", new LineBasedFrameDecoder(MAX_FRAME_SIZE));
 		configuration.getOutputStreams().stream()
 			.forEach(os -> pipeline.addLast("outputStreamWriterMessageHandler#" + os.getClass().getCanonicalName().trim(),
@@ -85,9 +85,9 @@ public abstract class AbstractClient implements Client {
     public void connect() {
 	LOGGER.info("Connecting");
 	try {
-	    b.handler(channelInitializer());
-	    f = b.connect(configuration.getConnection().getHost(), configuration.getConnection().getPort());
-	    f.sync();
+	    bootstrap.handler(channelInitializer());
+	    channelFuture = bootstrap.connect(configuration.getConnection().getHost(), configuration.getConnection().getPort());
+	    channelFuture.sync();
 	} catch (InterruptedException e) {
 	    LOGGER.error("Connection attempt failed", e);
 	}
@@ -96,19 +96,19 @@ public abstract class AbstractClient implements Client {
 
     @Override
     public void sendCommand(Command command) {
-	sendString(command.toString());
+	send(command.toString().getBytes(configuration.getCharSet()));
     }
 
-    public void sendString(String message) {
+    public void send(byte[] payload) {
 
-	if (!f.channel().isOpen()) {
+	if (!channelFuture.channel().isOpen()) {
 	    connect();
 	}
 
 	try {
-	    f.channel().writeAndFlush(message).sync();
+	    channelFuture.channel().writeAndFlush(payload).sync();
 	} catch (InterruptedException e) {
-	    LOGGER.error("Error sending message: {} ", message, e);
+	    LOGGER.error("Error sending message: {} ", payload, e);
 	}
     }
 
@@ -116,7 +116,7 @@ public abstract class AbstractClient implements Client {
 	LOGGER.info("Disconnecting");
 	try {
 	    sendCommand(new Quit());
-	    f.channel().closeFuture().sync();
+	    channelFuture.channel().closeFuture().sync();
 	} catch (InterruptedException e) {
 	    LOGGER.error("Failed to close connection", e);
 	} finally {

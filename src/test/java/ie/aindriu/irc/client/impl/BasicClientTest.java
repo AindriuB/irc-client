@@ -27,7 +27,7 @@ public class BasicClientTest {
     @Test
     public void testConnect() throws InterruptedException {
 	client.connect();
-	client.sendString("oauth:test");
+	client.send("oauth:test".getBytes());
 	client.disconnect();
     }
 

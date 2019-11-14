@@ -6,12 +6,10 @@ public interface Client {
 
     void connect();
     
-    void register();
-    
     void disconnect();
 
     void sendCommand(Command command);
     
-    void sendString(String message);
+    void send(byte[] payload);
     
 }

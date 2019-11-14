@@ -9,13 +9,6 @@ public class BasicClient extends AbstractClient {
 	super(connection);
     }
    
-
-    @Override
-    public void register() {
-	// TODO Auto-generated method stub
-	
-    }
-
     
 
 }

@@ -1,6 +1,7 @@
 package ie.aindriu.irc.client;
 
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 
 import ie.aindriu.irc.client.event.EventHandler;
 
@@ -45,6 +46,11 @@ public class ClientConfigurationBuilder {
     
     public ClientConfigurationBuilder outputStream(OutputStream outputStream) {
 	configuration.getOutputStreams().add(outputStream);
+	return this;
+    }
+    
+    public ClientConfigurationBuilder charset(Charset charset) {
+	configuration.setCharSet(charset);
 	return this;
     }
     
