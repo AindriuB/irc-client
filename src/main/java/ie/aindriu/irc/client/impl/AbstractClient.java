@@ -70,11 +70,11 @@ public abstract class AbstractClient implements Client {
 		}
 		pipeline.addLast("stringDecoder", new StringDecoder(configuration.getCharSet()));
 		pipeline.addLast("stringEncoder", new StringEncoder(configuration.getCharSet()));
-		pipeline.addLast("frameDecoder", new LineBasedFrameDecoder(MAX_FRAME_SIZE));
+		pipeline.addLast("lineBasedFrameDecoder", new LineBasedFrameDecoder(MAX_FRAME_SIZE));
 		configuration.getOutputStreams().stream()
-			.forEach(os -> pipeline.addLast("outputStreamWriterMessageHandler#" + os.getClass().getCanonicalName().trim(),
+			.forEach(os -> pipeline.addLast("outputStreamWriterInboundMessageHandler#" + os.getClass().getCanonicalName().trim(),
 				new OutputStreamWriterInboundMessageHandler(os)));
-		pipeline.addLast("eventPlublishingHandler",
+		pipeline.addLast("inboundMessageEventHandler",
 			new InboundMessageEventHandler(configuration.getEventHandlers()));
 
 
