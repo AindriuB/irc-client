@@ -1,6 +1,6 @@
-package ie.aindriu.irc.client;
+package ie.aindriu.irc.client.configuration;
 
-public class Connection {
+public class ConnectionConfiguration {
     
     private String host;
     
@@ -12,7 +12,7 @@ public class Connection {
     
     private int connectionTimeout;
     
-    public Connection() {
+    public ConnectionConfiguration() {
 	secure = true;
 	keepAlive = true;
 	connectionTimeout  = 5000;	

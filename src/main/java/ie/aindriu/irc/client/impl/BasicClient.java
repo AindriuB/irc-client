@@ -1,6 +1,6 @@
 package ie.aindriu.irc.client.impl;
 
-import ie.aindriu.irc.client.ClientConfiguration;
+import ie.aindriu.irc.client.configuration.ClientConfiguration;
 
 public class BasicClient extends AbstractClient {
 

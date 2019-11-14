@@ -1,4 +1,4 @@
-package ie.aindriu.irc.client;
+package ie.aindriu.irc.client.configuration;
 
 import java.io.OutputStream;
 import java.nio.charset.Charset;
@@ -12,14 +12,14 @@ public class ClientConfiguration {
     private Charset charSet;
     private List<EventHandler<String>> eventHandlers;
     private List<OutputStream> outputStreams;
-    private Connection connection;
+    private ConnectionConfiguration connection;
     
     private boolean debug;
 
     public ClientConfiguration() {
 	eventHandlers = new ArrayList<EventHandler<String>>();
 	outputStreams = new ArrayList<OutputStream>();
-	connection = new Connection();
+	connection = new ConnectionConfiguration();
 	debug = false;
 	charSet = Charset.defaultCharset();
     }
@@ -53,11 +53,11 @@ public class ClientConfiguration {
 	this.outputStreams = outputStreams;
     }
 
-    public Connection getConnection() {
+    public ConnectionConfiguration getConnection() {
 	return connection;
     }
 
-    public void setConnection(Connection connection) {
+    public void setConnection(ConnectionConfiguration connection) {
 	this.connection = connection;
     }
 

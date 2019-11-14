@@ -3,7 +3,7 @@ package ie.aindriu.irc.client.impl;
 import org.junit.Before;
 import org.junit.Test;
 
-import ie.aindriu.irc.client.ClientConfigurationBuilder;
+import ie.aindriu.irc.client.configuration.ClientConfigurationBuilder;
 import ie.aindriu.irc.client.event.LoggingEventHandler;
 
 public class BasicClientTest {

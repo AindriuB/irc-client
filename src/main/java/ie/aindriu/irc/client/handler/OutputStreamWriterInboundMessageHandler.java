@@ -10,17 +10,17 @@ import org.slf4j.LoggerFactory;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 
-public class OutputStreamWriterMessageHandler extends SimpleChannelInboundHandler<String> {
+public class OutputStreamWriterInboundMessageHandler extends SimpleChannelInboundHandler<String> {
 
-    private static Logger LOGGER = LoggerFactory.getLogger(OutputStreamWriterMessageHandler.class);
+    private static Logger LOGGER = LoggerFactory.getLogger(OutputStreamWriterInboundMessageHandler.class);
 
     private BufferedOutputStream outputStream;
 
-    public OutputStreamWriterMessageHandler() {
+    public OutputStreamWriterInboundMessageHandler() {
 	outputStream = null;
     }
 
-    public OutputStreamWriterMessageHandler(OutputStream outputStream) {
+    public OutputStreamWriterInboundMessageHandler(OutputStream outputStream) {
 	this.outputStream = new BufferedOutputStream(outputStream);
     }
 

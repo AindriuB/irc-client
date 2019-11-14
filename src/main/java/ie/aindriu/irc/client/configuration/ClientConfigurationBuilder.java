@@ -1,4 +1,4 @@
-package ie.aindriu.irc.client;
+package ie.aindriu.irc.client.configuration;
 
 import java.io.OutputStream;
 import java.nio.charset.Charset;
@@ -14,7 +14,7 @@ public class ClientConfigurationBuilder {
 	configuration = new ClientConfiguration();
     }
     
-    public ClientConfigurationBuilder connection(Connection connection) {
+    public ClientConfigurationBuilder connection(ConnectionConfiguration connection) {
 	configuration.setConnection(connection);
 	return this;
     }

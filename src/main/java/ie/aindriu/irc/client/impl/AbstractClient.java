@@ -6,11 +6,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import ie.aindriu.irc.client.Client;
-import ie.aindriu.irc.client.ClientConfiguration;
+import ie.aindriu.irc.client.configuration.ClientConfiguration;
 import ie.aindriu.irc.client.command.Command;
 import ie.aindriu.irc.client.command.Quit;
-import ie.aindriu.irc.client.handler.InboundEventPublishingMessageHandler;
-import ie.aindriu.irc.client.handler.OutputStreamWriterMessageHandler;
+import ie.aindriu.irc.client.handler.InboundMessageEventHandler;
+import ie.aindriu.irc.client.handler.OutputStreamWriterInboundMessageHandler;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -73,9 +73,9 @@ public abstract class AbstractClient implements Client {
 		pipeline.addLast("frameDecoder", new LineBasedFrameDecoder(MAX_FRAME_SIZE));
 		configuration.getOutputStreams().stream()
 			.forEach(os -> pipeline.addLast("outputStreamWriterMessageHandler#" + os.getClass().getCanonicalName().trim(),
-				new OutputStreamWriterMessageHandler(os)));
+				new OutputStreamWriterInboundMessageHandler(os)));
 		pipeline.addLast("eventPlublishingHandler",
-			new InboundEventPublishingMessageHandler(configuration.getEventHandlers()));
+			new InboundMessageEventHandler(configuration.getEventHandlers()));
 
 
 	    }

@@ -11,17 +11,17 @@ import ie.aindriu.irc.client.event.EventHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 
-public abstract class EventPublishingMessageHandler<T> extends SimpleChannelInboundHandler<T> {
+public abstract class AbstractInboundEventHandler<T> extends SimpleChannelInboundHandler<T> {
 
-    private static Logger LOGGER = LoggerFactory.getLogger(EventPublishingMessageHandler.class);
+    private static Logger LOGGER = LoggerFactory.getLogger(AbstractInboundEventHandler.class);
 
     private List<EventHandler<T>> eventHandlers;
     
-    public EventPublishingMessageHandler() {
+    public AbstractInboundEventHandler() {
 	eventHandlers = null;
     }
     
-    public EventPublishingMessageHandler(List<EventHandler<T>> eventHandlers) {
+    public AbstractInboundEventHandler(List<EventHandler<T>> eventHandlers) {
 	this.eventHandlers = eventHandlers;
     }
     
