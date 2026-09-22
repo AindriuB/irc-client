@@ -1,26 +1,31 @@
 package ie.aindriu.irc.client.configuration;
 
 public class ConnectionConfiguration {
-    
+
     private String host;
-    
+
     private int port;
-    
+
     private boolean secure;
-    
+
     private boolean keepAlive;
-    
-    private int connectionTimeout;
-    
+
     private int connectTimeout;
-    
+
+    /**
+     * Accept any server certificate. Off by default: turning it on leaves the
+     * connection encrypted but unauthenticated, and so open to interception. Only
+     * useful against a local or self-signed test server.
+     */
+    private boolean trustAllCertificates;
+
     public ConnectionConfiguration() {
-	secure = true;
-	keepAlive = true;
-	connectionTimeout  = 5000;	
-	connectTimeout = 5000;
+        secure = true;
+        keepAlive = true;
+        connectTimeout = 5000;
+        trustAllCertificates = false;
     }
-    
+
     public String getHost() {
         return host;
     }
@@ -53,14 +58,6 @@ public class ConnectionConfiguration {
         this.keepAlive = keepAlive;
     }
 
-    public int getConnectionTimeout() {
-        return connectionTimeout;
-    }
-
-    public void setConnectionTimeout(int connectionTimeout) {
-        this.connectionTimeout = connectionTimeout;
-    }
-
     public int getConnectTimeout() {
         return connectTimeout;
     }
@@ -69,9 +66,11 @@ public class ConnectionConfiguration {
         this.connectTimeout = connectTimeout;
     }
 
-    
+    public boolean isTrustAllCertificates() {
+        return trustAllCertificates;
+    }
 
-
-    
-    
+    public void setTrustAllCertificates(boolean trustAllCertificates) {
+        this.trustAllCertificates = trustAllCertificates;
+    }
 }

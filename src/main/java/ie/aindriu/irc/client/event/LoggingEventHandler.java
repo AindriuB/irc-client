@@ -5,10 +5,10 @@ import org.slf4j.LoggerFactory;
 
 public class LoggingEventHandler implements EventHandler<String> {
 
-    private static Logger LOGGER = LoggerFactory.getLogger(LoggingEventHandler.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(LoggingEventHandler.class);
+
     @Override
     public void publishEvent(Event<String> event) {
-	LOGGER.info("Message recieved: > {}", event.getPayload());
+        LOGGER.info("Message received: > {}", event.getPayload());
     }
-
 }

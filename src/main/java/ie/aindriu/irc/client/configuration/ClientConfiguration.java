@@ -13,18 +13,17 @@ public class ClientConfiguration {
     private List<EventHandler<String>> eventHandlers;
     private List<OutputStream> outputStreams;
     private ConnectionConfiguration connection;
-    
+
     private boolean debug;
 
     public ClientConfiguration() {
-	eventHandlers = new ArrayList<EventHandler<String>>();
-	outputStreams = new ArrayList<OutputStream>();
-	connection = new ConnectionConfiguration();
-	debug = false;
-	charSet = Charset.defaultCharset();
+        eventHandlers = new ArrayList<>();
+        outputStreams = new ArrayList<>();
+        connection = new ConnectionConfiguration();
+        debug = false;
+        charSet = Charset.defaultCharset();
     }
-    
-  
+
     public Charset getCharSet() {
         return charSet;
     }
@@ -41,24 +40,20 @@ public class ClientConfiguration {
         this.debug = debug;
     }
 
+    public List<OutputStream> getOutputStreams() {
+        return outputStreams;
+    }
+
     public void setOutputStreams(List<OutputStream> outputStreams) {
         this.outputStreams = outputStreams;
     }
 
-    public List<OutputStream> getOutputStreams() {
-	return outputStreams;
-    }
-
-    public void setOutputStream(List<OutputStream> outputStreams) {
-	this.outputStreams = outputStreams;
-    }
-
     public ConnectionConfiguration getConnection() {
-	return connection;
+        return connection;
     }
 
     public void setConnection(ConnectionConfiguration connection) {
-	this.connection = connection;
+        this.connection = connection;
     }
 
     public List<EventHandler<String>> getEventHandlers() {
@@ -68,5 +63,4 @@ public class ClientConfiguration {
     public void setEventHandlers(List<EventHandler<String>> eventHandlers) {
         this.eventHandlers = eventHandlers;
     }
-
 }
