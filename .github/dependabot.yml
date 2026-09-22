@@ -5,6 +5,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # 4.1.x is Netty's long-lived line and the one that stays Java 8
+      # compatible, which is the level this library targets. 4.2 is a new
+      # minor line with API changes, declined in #25. Patch and security
+      # updates within 4.1.x are still wanted - that is how #7 cleared eight
+      # advisories - so only the 4.2 range is ignored.
+      - dependency-name: io.netty:*
+        versions: ['[4.2,)']
 
   # The workflows above pin action versions, so they need updating too.
   - package-ecosystem: github-actions
