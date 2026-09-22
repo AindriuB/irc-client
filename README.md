@@ -2,6 +2,18 @@
 
 Simple IRC client library built on Netty, for a chat bot I'm working on.
 
+## Coordinates
+
+```xml
+<dependency>
+    <groupId>io.github.aindriub</groupId>
+    <artifactId>irc-client</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+</dependency>
+```
+
+Everything lives under `io.github.aindriub.irc.client`.
+
 ## Usage
 
 ```java
