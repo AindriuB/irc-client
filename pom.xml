@@ -27,6 +27,10 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<!-- Fallback for building on a JDK 8, which has no release flag. The
+		     profile below prefers release, which also checks that only Java 8
+		     APIs are used; source and target alone compile against whatever
+		     JDK is running and let a newer API slip through. -->
 		<maven.compiler.source>1.8</maven.compiler.source>
 		<maven.compiler.target>1.8</maven.compiler.target>
 		<!-- 4.1.x is Netty's long-lived line and is still Java 8 compatible. -->
@@ -140,6 +144,16 @@
 	</build>
 
 	<profiles>
+		<profile>
+			<id>jdk9-and-later</id>
+			<activation>
+				<jdk>[9,)</jdk>
+			</activation>
+			<properties>
+				<maven.compiler.release>8</maven.compiler.release>
+			</properties>
+		</profile>
+
 		<!-- Integration tests talk to a real IRC server, so they are opt in:
 		     mvn verify -Pintegration-test -->
 		<profile>

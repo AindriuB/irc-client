@@ -1,5 +1,7 @@
 # irc-client
 
+[![build](https://github.com/AindriuB/irc-client/actions/workflows/build.yml/badge.svg)](https://github.com/AindriuB/irc-client/actions/workflows/build.yml)
+
 Simple IRC client library built on Netty, for a chat bot I'm working on.
 
 ## Writing a bot
@@ -170,5 +172,5 @@ mvn verify -Pintegration-test     # also runs *IT tests against a real server
 ```
 
 Coverage is reported by JaCoCo to `target/site/jacoco/` and floored at 97% instruction
-/ 95% branch by `mvn verify`. Tests that need a server run against an in-process stub
+/ 95% branch by `mvn verify`, which CI runs on Java 8, 17 and 21. Tests that need a server run against an in-process stub
 (`StubIRCServer`), including over TLS, so the whole suite runs without network access.
