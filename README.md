@@ -115,10 +115,12 @@ is available directly if you want to do it yourself.
 ## Commands
 
 Registration: `Pass`, `Nick`, `User`, `Cap` (`ls`/`req`/`end`)
-Channels: `Join` (with keys, and `Join.partAll()`), `Part` (with reason), `Who`
+Channels: `Join` (with keys, and `Join.partAll()`), `Part` (with reason), `Names`,
+`ListChannels`, `Topic`, `Mode`, `Kick`, `Invite`
 Messaging: `PrivMsg`, `Notice`
+Users: `Who`, `Whois`, `Whowas`, `Ison`, `Userhost`
 Keepalive: `Ping`, `Pong` — server pings are answered for you
-Session: `Quit` (with reason)
+Session: `Quit` (with reason), `Away`
 
 Commands validate their arguments and reject anything containing CR, LF or NUL, so
 input taken from chat cannot inject a second IRC message. `render()` is the wire
