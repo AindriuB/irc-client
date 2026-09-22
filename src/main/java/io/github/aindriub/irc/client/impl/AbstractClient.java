@@ -16,6 +16,8 @@ import io.github.aindriub.irc.client.IRCClientException;
 import io.github.aindriub.irc.client.IRCText;
 import io.github.aindriub.irc.client.configuration.ClientConfiguration;
 import io.github.aindriub.irc.client.configuration.ConnectionConfiguration;
+import io.github.aindriub.irc.client.handler.InboundIRCMessageEventHandler;
+import io.github.aindriub.irc.client.handler.IRCMessageDecoder;
 import io.github.aindriub.irc.client.handler.InboundMessageEventHandler;
 import io.github.aindriub.irc.client.handler.OutputStreamWriterInboundMessageHandler;
 import io.github.aindriub.irc.client.handler.PingHandler;
@@ -138,6 +140,14 @@ public abstract class AbstractClient implements Client {
         }
         pipeline.addLast("inboundMessageEventHandler",
                 new InboundMessageEventHandler(configuration.getEventHandlers()));
+
+        if (!configuration.getMessageHandlers().isEmpty()) {
+            // Last, so that raw subscribers and output streams see the unparsed line
+            // and nothing pays for parsing unless a typed subscriber asked for it.
+            pipeline.addLast("ircMessageDecoder", new IRCMessageDecoder());
+            pipeline.addLast("inboundIRCMessageEventHandler",
+                    new InboundIRCMessageEventHandler(configuration.getMessageHandlers()));
+        }
     }
 
     @Override

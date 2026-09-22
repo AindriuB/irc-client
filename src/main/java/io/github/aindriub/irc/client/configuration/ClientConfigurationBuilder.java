@@ -5,6 +5,7 @@ import java.nio.charset.Charset;
 import java.util.Objects;
 
 import io.github.aindriub.irc.client.event.EventHandler;
+import io.github.aindriub.irc.client.message.IRCMessage;
 
 public class ClientConfigurationBuilder {
 
@@ -127,6 +128,17 @@ public class ClientConfigurationBuilder {
 
     public ClientConfigurationBuilder eventListener(EventHandler<String> eventHandler) {
         configuration.getEventHandlers().add(Objects.requireNonNull(eventHandler, "eventHandler"));
+        return this;
+    }
+
+    /**
+     * Subscribes to parsed messages. Usually a
+     * {@link io.github.aindriub.irc.client.event.MessageListener}, which dispatches
+     * to a callback per message type.
+     */
+    public ClientConfigurationBuilder messageListener(EventHandler<IRCMessage> messageHandler) {
+        configuration.getMessageHandlers()
+                .add(Objects.requireNonNull(messageHandler, "messageHandler"));
         return this;
     }
 

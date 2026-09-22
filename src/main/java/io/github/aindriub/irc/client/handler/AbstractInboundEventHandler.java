@@ -35,6 +35,9 @@ public abstract class AbstractInboundEventHandler<T> extends SimpleChannelInboun
                 LOGGER.error("Event handler {} failed", eventHandler.getClass().getName(), e);
             }
         }
+        // Passed on so that handlers further down the pipeline, such as the decoder
+        // feeding the typed subscribers, still see it.
+        ctx.fireChannelRead(msg);
     }
 
     @Override
