@@ -34,6 +34,17 @@ client.sendCommand(new PrivMsg("#channel", "hello"));
 client.disconnect();                      // sends QUIT, then closes
 ```
 
+Outbound messages are rate limited so the server does not disconnect you for
+flooding: five may go back to back, then one every two seconds by default. `PONG`
+and the registration handshake bypass it, since delaying those would cause the very
+timeouts they prevent. A connection that goes silent for three minutes is pinged,
+and closed if it still says nothing, which hands over to the reconnect logic.
+
+```java
+.floodProtection(5, 2000)   // burst, then one per interval; .floodProtection(false) to disable
+.readTimeout(180000)        // silence before the liveness check; 0 to disable
+```
+
 If the connection drops unexpectedly the client reconnects with exponential backoff,
 re-registers and rejoins its channels. A deliberate `disconnect()` never reconnects,
 and a disconnected client cannot be reused — build a new one. `send()` throws rather

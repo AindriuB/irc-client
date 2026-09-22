@@ -41,6 +41,8 @@ public class ConfigurationTest {
         configuration.setConnection(connection);
         configuration.setRegistration(registration);
         configuration.setReconnect(reconnect);
+        FloodConfiguration flood = new FloodConfiguration();
+        configuration.setFlood(flood);
         configuration.setEventHandlers(raw);
         configuration.setMessageHandlers(typed);
         configuration.setOutputStreams(streams);
@@ -50,6 +52,7 @@ public class ConfigurationTest {
         assertSame(connection, configuration.getConnection());
         assertSame(registration, configuration.getRegistration());
         assertSame(reconnect, configuration.getReconnect());
+        assertSame(flood, configuration.getFlood());
         assertSame(raw, configuration.getEventHandlers());
         assertSame(typed, configuration.getMessageHandlers());
         assertSame(streams, configuration.getOutputStreams());
@@ -141,6 +144,69 @@ public class ConfigurationTest {
         assertEquals(22, reconnect.getMaxDelay());
         assertEquals(3.0, reconnect.getMultiplier(), 0.0001);
         assertEquals(4, reconnect.getMaxAttempts());
+    }
+
+    @Test
+    public void floodConfigurationRoundTrips() {
+        FloodConfiguration flood = new FloodConfiguration();
+
+        assertTrue("flood protection should be on by default", flood.isEnabled());
+        assertTrue(flood.getBurst() >= 1);
+        assertTrue(flood.getInterval() >= 1);
+
+        flood.setEnabled(false);
+        flood.setBurst(9);
+        flood.setInterval(1500);
+
+        assertFalse(flood.isEnabled());
+        assertEquals(9, flood.getBurst());
+        assertEquals(1500, flood.getInterval());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void floodBurstMustAllowAtLeastOneMessage() {
+        new FloodConfiguration().setBurst(0);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void floodIntervalMustBePositive() {
+        new FloodConfiguration().setInterval(0);
+    }
+
+    @Test
+    public void readTimeoutRoundTrips() {
+        ConnectionConfiguration connection = new ConnectionConfiguration();
+
+        assertTrue("idle detection should be on by default", connection.getReadTimeout() > 0);
+
+        connection.setReadTimeout(0);
+        assertEquals("zero switches the check off", 0, connection.getReadTimeout());
+    }
+
+    @Test
+    public void builderSetsTheFloodAndIdleSettings() {
+        ClientConfiguration configuration = new ClientConfigurationBuilder()
+                .host("irc.example.org")
+                .port(6667)
+                .floodProtection(7, 900)
+                .readTimeout(45000)
+                .build();
+
+        assertTrue(configuration.getFlood().isEnabled());
+        assertEquals(7, configuration.getFlood().getBurst());
+        assertEquals(900, configuration.getFlood().getInterval());
+        assertEquals(45000, configuration.getConnection().getReadTimeout());
+    }
+
+    @Test
+    public void builderCanSwitchFloodProtectionOff() {
+        ClientConfiguration configuration = new ClientConfigurationBuilder()
+                .host("irc.example.org")
+                .port(6667)
+                .floodProtection(false)
+                .build();
+
+        assertFalse(configuration.getFlood().isEnabled());
     }
 
     @Test

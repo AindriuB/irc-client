@@ -143,6 +143,37 @@ public class ClientConfigurationBuilder {
         return this;
     }
 
+    /**
+     * Rate limit outbound messages so the server does not disconnect the client for
+     * flooding. On by default.
+     */
+    public ClientConfigurationBuilder floodProtection(boolean enabled) {
+        configuration.getFlood().setEnabled(enabled);
+        return this;
+    }
+
+    /**
+     * @param burst           messages allowed back to back
+     * @param intervalMillis  gap between releases once the burst is spent
+     */
+    public ClientConfigurationBuilder floodProtection(int burst, long intervalMillis) {
+        FloodConfiguration flood = configuration.getFlood();
+        flood.setEnabled(true);
+        flood.setBurst(burst);
+        flood.setInterval(intervalMillis);
+        return this;
+    }
+
+    /**
+     * How long the connection may go silent before the client checks it is alive and
+     * then closes it. Zero switches the check off.
+     */
+    public ClientConfigurationBuilder readTimeout(long readTimeoutMillis) {
+        connectionFieldsSet = true;
+        configuration.getConnection().setReadTimeout(readTimeoutMillis);
+        return this;
+    }
+
     public ClientConfigurationBuilder debug(boolean debug) {
         configuration.setDebug(debug);
         return this;

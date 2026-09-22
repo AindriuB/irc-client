@@ -17,6 +17,7 @@ public class ClientConfiguration {
     private ConnectionConfiguration connection;
     private RegistrationConfiguration registration;
     private ReconnectConfiguration reconnect;
+    private FloodConfiguration flood;
 
     private boolean debug;
 
@@ -27,6 +28,7 @@ public class ClientConfiguration {
         connection = new ConnectionConfiguration();
         registration = new RegistrationConfiguration();
         reconnect = new ReconnectConfiguration();
+        flood = new FloodConfiguration();
         debug = false;
         charSet = Charset.defaultCharset();
     }
@@ -89,6 +91,14 @@ public class ClientConfiguration {
 
     public void setReconnect(ReconnectConfiguration reconnect) {
         this.reconnect = reconnect;
+    }
+
+    public FloodConfiguration getFlood() {
+        return flood;
+    }
+
+    public void setFlood(FloodConfiguration flood) {
+        this.flood = flood;
     }
 
     public List<EventHandler<String>> getEventHandlers() {

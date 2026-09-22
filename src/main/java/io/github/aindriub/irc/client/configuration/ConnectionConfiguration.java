@@ -19,11 +19,18 @@ public class ConnectionConfiguration {
      */
     private boolean trustAllCertificates;
 
+    /**
+     * How long the connection may go without a single inbound byte before the client
+     * pings to check it is alive, and then closes it. Zero switches the check off.
+     */
+    private long readTimeout;
+
     public ConnectionConfiguration() {
         secure = true;
         keepAlive = true;
         connectTimeout = 5000;
         trustAllCertificates = false;
+        readTimeout = 180000;
     }
 
     public String getHost() {
@@ -64,6 +71,14 @@ public class ConnectionConfiguration {
 
     public void setConnectTimeout(int connectTimeout) {
         this.connectTimeout = connectTimeout;
+    }
+
+    public long getReadTimeout() {
+        return readTimeout;
+    }
+
+    public void setReadTimeout(long readTimeout) {
+        this.readTimeout = readTimeout;
     }
 
     public boolean isTrustAllCertificates() {
