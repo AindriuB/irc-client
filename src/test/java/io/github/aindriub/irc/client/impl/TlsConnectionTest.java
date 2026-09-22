@@ -9,6 +9,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import io.github.aindriub.irc.client.configuration.ClientConfigurationBuilder;
+import io.github.aindriub.irc.client.testsupport.StubIRCServer;
 
 /**
  * TLS is the default mode, so it needs exercising against a real handshake rather

@@ -1,0 +1,309 @@
+package io.github.aindriub.irc.client.bot;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import io.github.aindriub.irc.client.command.Join;
+import io.github.aindriub.irc.client.command.Notice;
+import io.github.aindriub.irc.client.command.Part;
+import io.github.aindriub.irc.client.command.PrivMsg;
+import io.github.aindriub.irc.client.configuration.ClientConfiguration;
+import io.github.aindriub.irc.client.event.MessageListener;
+import io.github.aindriub.irc.client.impl.BasicIRCClient;
+import io.github.aindriub.irc.client.message.IRCMessage;
+import io.github.aindriub.irc.client.message.Numerics;
+
+/**
+ * A chat bot on top of {@link BasicIRCClient}: connects, registers, joins its
+ * channels and routes what arrives to listeners and command handlers.
+ *
+ * <pre>
+ * IRCBot bot = IRCBot.builder()
+ *         .host("irc.example.org")
+ *         .nick("mybot")
+ *         .channels("#chat")
+ *         .command("!hello", (context, args) -&gt; context.reply("hello " + context.getSender()))
+ *         .build();
+ * bot.start();
+ * </pre>
+ */
+public class IRCBot {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(IRCBot.class);
+
+    private final BasicIRCClient client;
+    private final List<String> channels;
+    private final List<BotListener> listeners;
+    private final Map<String, CommandHandler> commands;
+    private final String commandPrefix;
+
+    /**
+     * The nick actually in use, which is not always the configured one: the server
+     * may have sent us away with a modified nick after a collision.
+     */
+    private volatile String nick;
+
+    IRCBot(ClientConfiguration configuration, List<String> channels,
+            List<BotListener> listeners, Map<String, CommandHandler> commands,
+            String commandPrefix) {
+        this.channels = new ArrayList<>(channels);
+        this.listeners = new CopyOnWriteArrayList<>(listeners);
+        this.commands = new LinkedHashMap<>(commands);
+        this.commandPrefix = commandPrefix;
+        this.nick = configuration.getRegistration().getNick();
+        configuration.getMessageHandlers().add(new Router());
+        this.client = new BasicIRCClient(configuration) {
+            @Override
+            protected void onReconnected() {
+                super.onReconnected();
+                // The client rejoins tracked channels itself; this is only to tell
+                // listeners the bot is usable again.
+                announceReady();
+            }
+        };
+    }
+
+    public static IRCBotBuilder builder() {
+        return new IRCBotBuilder();
+    }
+
+    /**
+     * Connects, registers and joins the configured channels. Returns once the bot is
+     * in its channels.
+     */
+    public void start() {
+        client.connect();
+        joinConfiguredChannels();
+        announceReady();
+    }
+
+    /**
+     * Parts cleanly and shuts down. The bot cannot be started again afterwards.
+     */
+    public void stop() {
+        client.disconnect();
+    }
+
+    public boolean isRunning() {
+        return client.isConnected() && client.isRegistered();
+    }
+
+    /**
+     * The nick the bot is using, which may differ from the configured one if it was
+     * taken.
+     */
+    public String getNick() {
+        return nick;
+    }
+
+    public List<String> getChannels() {
+        return client.getJoinedChannels();
+    }
+
+    /**
+     * Sends a message to a channel or a user.
+     */
+    public void say(String target, String text) {
+        client.sendCommand(new PrivMsg(target, text));
+    }
+
+    /**
+     * Sends a NOTICE, which other clients will not auto-respond to.
+     */
+    public void notice(String target, String text) {
+        client.sendCommand(new Notice(target, text));
+    }
+
+    public void join(String channel) {
+        client.sendCommand(new Join(channel));
+    }
+
+    public void part(String channel) {
+        client.sendCommand(new Part(channel));
+    }
+
+    public void addListener(BotListener listener) {
+        listeners.add(listener);
+    }
+
+    /**
+     * The underlying client, for anything the bot API does not cover.
+     */
+    public BasicIRCClient getClient() {
+        return client;
+    }
+
+    private void joinConfiguredChannels() {
+        if (!channels.isEmpty()) {
+            client.sendCommand(new Join(channels));
+        }
+    }
+
+    private void announceReady() {
+        for (BotListener listener : listeners) {
+            safely(listener, "onReady", new Runnable() {
+                @Override
+                public void run() {
+                    listener.onReady(IRCBot.this);
+                }
+            });
+        }
+    }
+
+    /**
+     * One misbehaving listener should not stop the others, nor take down the
+     * connection it is running on.
+     */
+    private void safely(BotListener listener, String what, Runnable action) {
+        try {
+            action.run();
+        } catch (RuntimeException e) {
+            LOGGER.error("Listener {} failed in {}", listener.getClass().getName(), what, e);
+        }
+    }
+
+    /**
+     * Turns parsed messages into bot events.
+     */
+    private final class Router extends MessageListener {
+
+        @Override
+        protected void onMessage(String target, String sender, String text, IRCMessage raw) {
+            if (isFromSelf(sender)) {
+                // Some servers echo our own messages back. Dispatching them would let
+                // a bot answer itself forever.
+                return;
+            }
+            final MessageContext context = new MessageContext(IRCBot.this, raw, target, sender,
+                    text);
+            dispatchCommand(context);
+            for (final BotListener listener : listeners) {
+                safely(listener, "onMessage", new Runnable() {
+                    @Override
+                    public void run() {
+                        listener.onMessage(context);
+                    }
+                });
+            }
+        }
+
+        @Override
+        protected void onNotice(String target, String sender, String text, IRCMessage raw) {
+            if (isFromSelf(sender)) {
+                return;
+            }
+            final MessageContext context = new MessageContext(IRCBot.this, raw, target, sender,
+                    text);
+            for (final BotListener listener : listeners) {
+                safely(listener, "onNotice", new Runnable() {
+                    @Override
+                    public void run() {
+                        listener.onNotice(context);
+                    }
+                });
+            }
+        }
+
+        @Override
+        protected void onJoin(final String channel, final String joiner, IRCMessage raw) {
+            for (final BotListener listener : listeners) {
+                safely(listener, "onJoin", new Runnable() {
+                    @Override
+                    public void run() {
+                        listener.onJoin(IRCBot.this, channel, joiner);
+                    }
+                });
+            }
+        }
+
+        @Override
+        protected void onPart(final String channel, final String parter, IRCMessage raw) {
+            for (final BotListener listener : listeners) {
+                safely(listener, "onPart", new Runnable() {
+                    @Override
+                    public void run() {
+                        listener.onPart(IRCBot.this, channel, parter);
+                    }
+                });
+            }
+        }
+
+        @Override
+        protected void onQuit(final String quitter, final String reason, IRCMessage raw) {
+            for (final BotListener listener : listeners) {
+                safely(listener, "onQuit", new Runnable() {
+                    @Override
+                    public void run() {
+                        listener.onQuit(IRCBot.this, quitter, reason);
+                    }
+                });
+            }
+        }
+
+        @Override
+        protected void onNickChange(String oldNick, String newNick, IRCMessage raw) {
+            if (isFromSelf(oldNick)) {
+                nick = newNick;
+            }
+        }
+
+        @Override
+        protected void onNumeric(String numeric, IRCMessage raw) {
+            if (Numerics.RPL_WELCOME.equals(numeric) && raw.getParam(0) != null) {
+                // Authoritative: this is the nick the server actually gave us, which
+                // differs from the configured one after a collision.
+                nick = raw.getParam(0);
+            }
+            forwardAsOther(raw);
+        }
+
+        @Override
+        protected void onOther(IRCMessage raw) {
+            forwardAsOther(raw);
+        }
+
+        private void forwardAsOther(final IRCMessage raw) {
+            for (final BotListener listener : listeners) {
+                safely(listener, "onOther", new Runnable() {
+                    @Override
+                    public void run() {
+                        listener.onOther(IRCBot.this, raw);
+                    }
+                });
+            }
+        }
+    }
+
+    private boolean isFromSelf(String sender) {
+        return sender != null && sender.equalsIgnoreCase(nick);
+    }
+
+    private void dispatchCommand(MessageContext context) {
+        if (commands.isEmpty()) {
+            return;
+        }
+        String text = context.getText().trim();
+        if (!text.startsWith(commandPrefix)) {
+            return;
+        }
+        String[] parts = text.split("\\s+");
+        final CommandHandler handler = commands.get(parts[0].toLowerCase(Locale.ROOT));
+        if (handler == null) {
+            return;
+        }
+        final List<String> args = Arrays.asList(parts).subList(1, parts.length);
+        try {
+            handler.handle(context, new ArrayList<>(args));
+        } catch (RuntimeException e) {
+            LOGGER.error("Command {} failed", parts[0], e);
+        }
+    }
+}

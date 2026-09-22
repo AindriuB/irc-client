@@ -17,6 +17,7 @@ import io.github.aindriub.irc.client.command.Join;
 import io.github.aindriub.irc.client.command.Part;
 import io.github.aindriub.irc.client.command.PrivMsg;
 import io.github.aindriub.irc.client.configuration.ClientConfigurationBuilder;
+import io.github.aindriub.irc.client.testsupport.StubIRCServer;
 import io.github.aindriub.irc.client.event.MessageListener;
 import io.github.aindriub.irc.client.message.IRCMessage;
 

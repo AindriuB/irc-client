@@ -2,6 +2,39 @@
 
 Simple IRC client library built on Netty, for a chat bot I'm working on.
 
+## Writing a bot
+
+```java
+IRCBot bot = IRCBot.builder()
+        .host("irc.example.org")
+        .nick("mybot")
+        .password("hunter2")              // optional; Twitch takes oauth:... here
+        .channels("#chat")
+        .command("!hello", (context, args) -> context.reply("hello " + context.getSender()))
+        .listener(new BotListener() {
+            @Override
+            public void onMessage(MessageContext context) {
+                if (context.getText().contains("ping")) {
+                    context.reply("pong");
+                }
+            }
+        })
+        .build();
+
+bot.start();   // connects, registers, joins, and returns once it is in its channels
+```
+
+`context.reply(..)` answers where the message came from — the channel for a channel
+message, the sender for a direct one. `replyDirectly(..)` always goes to the person
+and `replyNotice(..)` sends a NOTICE. The bot never receives its own messages, so it
+cannot answer itself into a loop, and a listener that throws is logged rather than
+taking the connection down.
+
+`onReady` fires once the bot is in its channels, and again after every reconnect.
+`builder.client()` reaches the full connection configuration — TLS, timeouts, flood
+protection, reconnection — for anything the bot builder does not surface. For lower
+level use, drive `BasicIRCClient` directly as below.
+
 ## Coordinates
 
 ```xml
