@@ -182,6 +182,16 @@ public class ClientConfigurationBuilder {
     }
 
     /**
+     * How many messages may wait behind flood protection before a send is refused
+     * with an OutboundQueueFullException. Zero removes the limit, which trades an
+     * error a caller can handle for memory growth it cannot see.
+     */
+    public ClientConfigurationBuilder outboundQueueDepth(int maxQueueDepth) {
+        configuration.getFlood().setMaxQueueDepth(maxQueueDepth);
+        return this;
+    }
+
+    /**
      * How long the connection may go silent before the client checks it is alive and
      * then closes it. Zero switches the check off.
      */

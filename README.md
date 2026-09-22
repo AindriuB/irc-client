@@ -96,8 +96,16 @@ and closed if it still says nothing, which hands over to the reconnect logic.
 
 ```java
 .floodProtection(5, 2000)   // burst, then one per interval; .floodProtection(false) to disable
+.outboundQueueDepth(30)     // messages that may wait behind it; 0 removes the limit
 .readTimeout(180000)        // silence before the liveness check; 0 to disable
 ```
+
+The queue behind flood protection is bounded. Producing faster than the rate fails
+the send with `OutboundQueueFullException` rather than growing memory quietly —
+Netty's write watermarks cannot help here, because the limiter accepts every write
+immediately and the channel never sees anything outstanding. Catching it is a
+bot's cue to slow down or drop the message; raising the depth trades that error for
+memory.
 
 If the connection drops unexpectedly the client reconnects with exponential backoff,
 re-registers and rejoins its channels. A deliberate `disconnect()` never reconnects,

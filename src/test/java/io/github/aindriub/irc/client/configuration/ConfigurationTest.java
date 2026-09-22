@@ -151,16 +151,19 @@ public class ConfigurationTest {
         FloodConfiguration flood = new FloodConfiguration();
 
         assertTrue("flood protection should be on by default", flood.isEnabled());
+        assertTrue("and its queue bounded by default", flood.getMaxQueueDepth() > 0);
         assertTrue(flood.getBurst() >= 1);
         assertTrue(flood.getInterval() >= 1);
 
         flood.setEnabled(false);
         flood.setBurst(9);
         flood.setInterval(1500);
+        flood.setMaxQueueDepth(7);
 
         assertFalse(flood.isEnabled());
         assertEquals(9, flood.getBurst());
         assertEquals(1500, flood.getInterval());
+        assertEquals(7, flood.getMaxQueueDepth());
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -189,12 +192,14 @@ public class ConfigurationTest {
                 .host("irc.example.org")
                 .port(6667)
                 .floodProtection(7, 900)
+                .outboundQueueDepth(11)
                 .readTimeout(45000)
                 .build();
 
         assertTrue(configuration.getFlood().isEnabled());
         assertEquals(7, configuration.getFlood().getBurst());
         assertEquals(900, configuration.getFlood().getInterval());
+        assertEquals(11, configuration.getFlood().getMaxQueueDepth());
         assertEquals(45000, configuration.getConnection().getReadTimeout());
     }
 
