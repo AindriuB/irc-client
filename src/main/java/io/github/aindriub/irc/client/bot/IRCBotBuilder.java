@@ -30,6 +30,7 @@ public class IRCBotBuilder {
 
     private String commandPrefix = DEFAULT_COMMAND_PREFIX;
     private boolean portSet = false;
+    private boolean trackChannelState = true;
 
     public IRCBotBuilder host(String host) {
         client.host(host);
@@ -101,6 +102,16 @@ public class IRCBotBuilder {
     }
 
     /**
+     * Keeps track of who is in each channel and what status they hold, readable
+     * through {@link IRCBot#getChannelState(String)}. On by default; switch it off
+     * for a bot that never asks, since a busy channel makes it work for nothing.
+     */
+    public IRCBotBuilder trackChannelState(boolean trackChannelState) {
+        this.trackChannelState = trackChannelState;
+        return this;
+    }
+
+    /**
      * The underlying client configuration, for TLS, timeouts, flood protection,
      * reconnection and everything else this builder does not surface.
      */
@@ -116,6 +127,7 @@ public class IRCBotBuilder {
         if (!configuration.getRegistration().isConfigured()) {
             throw new IllegalStateException("a nick is required");
         }
-        return new IRCBot(configuration, channels, listeners, commands, commandPrefix);
+        return new IRCBot(configuration, channels, listeners, commands, commandPrefix,
+                trackChannelState);
     }
 }
