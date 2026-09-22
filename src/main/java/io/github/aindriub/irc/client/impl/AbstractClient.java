@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import io.github.aindriub.irc.client.Client;
 import io.github.aindriub.irc.client.IRCClientException;
+import io.github.aindriub.irc.client.IRCText;
 import io.github.aindriub.irc.client.configuration.ClientConfiguration;
 import io.github.aindriub.irc.client.configuration.ConnectionConfiguration;
 import io.github.aindriub.irc.client.handler.InboundMessageEventHandler;
@@ -138,6 +139,9 @@ public abstract class AbstractClient implements Client {
 
     @Override
     public void send(String payload) {
+        // The raw send path has to validate too, or it is a way around the checks
+        // every Command performs.
+        IRCText.requireText(payload, "payload");
         if (!isConnected()) {
             connect();
         }

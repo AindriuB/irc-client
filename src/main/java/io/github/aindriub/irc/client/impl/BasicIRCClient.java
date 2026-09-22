@@ -13,7 +13,7 @@ public class BasicIRCClient extends AbstractClient implements CommandClient {
 
     @Override
     public void sendCommand(Command command) {
-        send(command.toString());
+        send(command.render());
     }
 
     @Override
