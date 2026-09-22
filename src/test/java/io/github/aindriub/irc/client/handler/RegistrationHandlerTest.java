@@ -1,0 +1,242 @@
+package io.github.aindriub.irc.client.handler;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+
+import org.junit.Test;
+
+import io.github.aindriub.irc.client.IRCClientException;
+import io.github.aindriub.irc.client.configuration.RegistrationConfiguration;
+import io.netty.channel.embedded.EmbeddedChannel;
+
+public class RegistrationHandlerTest {
+
+    private final CompletableFuture<Void> registered = new CompletableFuture<>();
+
+    @Test
+    public void sendsThePasswordBeforeNickAndUser() {
+        EmbeddedChannel channel = connect(config("bot", "oauth:token"));
+
+        assertEquals("PASS oauth:token", channel.readOutbound());
+        assertEquals("NICK bot", channel.readOutbound());
+        assertEquals("USER bot 0 * :bot", channel.readOutbound());
+        assertNull(channel.readOutbound());
+    }
+
+    @Test
+    public void omitsThePasswordWhenThereIsNone() {
+        EmbeddedChannel channel = connect(config("bot", null));
+
+        assertEquals("NICK bot", channel.readOutbound());
+        assertEquals("USER bot 0 * :bot", channel.readOutbound());
+    }
+
+    @Test
+    public void usesTheConfiguredUsernameAndRealname() {
+        RegistrationConfiguration configuration = config("bot", null);
+        configuration.setUsername("botuser");
+        configuration.setRealname("A Friendly Bot");
+
+        EmbeddedChannel channel = connect(configuration);
+
+        assertEquals("NICK bot", channel.readOutbound());
+        assertEquals("USER botuser 0 * :A Friendly Bot", channel.readOutbound());
+    }
+
+    @Test
+    public void negotiatesOnlyTheCapabilitiesTheServerOffers() {
+        RegistrationConfiguration configuration = config("bot", null);
+        configuration.getCapabilities().add("twitch.tv/tags");
+        configuration.getCapabilities().add("twitch.tv/membership");
+        EmbeddedChannel channel = connect(configuration);
+
+        assertEquals("CAP LS 302", channel.readOutbound());
+        drain(channel);
+
+        // The server offers one of the two, and an unrelated third.
+        channel.writeInbound(":tmi.twitch.tv CAP * LS :twitch.tv/tags sasl");
+
+        assertEquals("CAP REQ :twitch.tv/tags", channel.readOutbound());
+
+        channel.writeInbound(":tmi.twitch.tv CAP * ACK :twitch.tv/tags");
+
+        assertEquals("CAP END", channel.readOutbound());
+    }
+
+    @Test
+    public void endsNegotiationWhenTheServerOffersNothingWanted() {
+        RegistrationConfiguration configuration = config("bot", null);
+        configuration.getCapabilities().add("twitch.tv/tags");
+        EmbeddedChannel channel = connect(configuration);
+        drain(channel);
+
+        channel.writeInbound(":server CAP * LS :sasl multi-prefix");
+
+        assertEquals("CAP END", channel.readOutbound());
+    }
+
+    @Test
+    public void endsNegotiationOnNak() {
+        RegistrationConfiguration configuration = config("bot", null);
+        configuration.getCapabilities().add("twitch.tv/tags");
+        EmbeddedChannel channel = connect(configuration);
+        drain(channel);
+
+        channel.writeInbound(":server CAP * LS :twitch.tv/tags");
+        assertEquals("CAP REQ :twitch.tv/tags", channel.readOutbound());
+
+        channel.writeInbound(":server CAP * NAK :twitch.tv/tags");
+
+        assertEquals("CAP END", channel.readOutbound());
+    }
+
+    @Test
+    public void matchesACapabilityTheServerAdvertisesWithAValue() {
+        RegistrationConfiguration configuration = config("bot", null);
+        configuration.getCapabilities().add("sasl");
+        EmbeddedChannel channel = connect(configuration);
+        drain(channel);
+
+        channel.writeInbound(":server CAP * LS :sasl=PLAIN,EXTERNAL multi-prefix");
+
+        assertEquals("CAP REQ :sasl", channel.readOutbound());
+    }
+
+    @Test
+    public void completesOnWelcomeAndThenRemovesItself() throws Exception {
+        EmbeddedChannel channel = connect(config("bot", null));
+        drain(channel);
+        assertFalse(registered.isDone());
+
+        channel.writeInbound(":server 001 bot :Welcome to the network");
+
+        assertTrue(registered.isDone());
+        registered.get();
+        assertNull("the handler should remove itself once registered",
+                channel.pipeline().get(RegistrationHandler.class));
+    }
+
+    @Test
+    public void retriesWithAModifiedNickWhenTheNickIsTaken() {
+        EmbeddedChannel channel = connect(config("bot", null));
+        drain(channel);
+
+        channel.writeInbound(":server 433 * bot :Nickname is already in use");
+        assertEquals("NICK bot_", channel.readOutbound());
+
+        channel.writeInbound(":server 433 * bot_ :Nickname is already in use");
+        assertEquals("NICK bot__", channel.readOutbound());
+
+        channel.writeInbound(":server 001 bot__ :Welcome");
+        assertTrue(registered.isDone());
+    }
+
+    @Test
+    public void givesUpAfterTheConfiguredNumberOfNickAttempts() {
+        RegistrationConfiguration configuration = config("bot", null);
+        configuration.setMaxNickAttempts(1);
+        EmbeddedChannel channel = connect(configuration);
+        drain(channel);
+
+        channel.writeInbound(":server 433 * bot :Nickname is already in use");
+        assertEquals("NICK bot_", channel.readOutbound());
+
+        channel.writeInbound(":server 433 * bot_ :Nickname is already in use");
+
+        assertFailedWith("unavailable");
+    }
+
+    @Test
+    public void failsOnABadPassword() {
+        EmbeddedChannel channel = connect(config("bot", "oauth:wrong"));
+        drain(channel);
+
+        channel.writeInbound(":server 464 * :Password incorrect");
+
+        assertFailedWith("rejected by the server");
+        assertFalse("the channel should be closed", channel.isOpen());
+    }
+
+    @Test
+    public void failsWhenTheServerHangsUpMidHandshake() {
+        EmbeddedChannel channel = connect(config("bot", null));
+        drain(channel);
+
+        channel.close();
+
+        assertFailedWith("closed before registration completed");
+    }
+
+    @Test
+    public void passesEveryMessageOnToTheRestOfThePipeline() {
+        List<String> seen = new ArrayList<>();
+        EmbeddedChannel channel = new EmbeddedChannel(
+                new RegistrationHandler(config("bot", null), registered),
+                new io.netty.channel.SimpleChannelInboundHandler<String>() {
+                    @Override
+                    protected void channelRead0(io.netty.channel.ChannelHandlerContext ctx,
+                            String msg) {
+                        seen.add(msg);
+                    }
+                });
+        drain(channel);
+
+        channel.writeInbound(":server 001 bot :Welcome");
+        channel.writeInbound(":n!u@h PRIVMSG #chan :hello");
+
+        assertEquals(2, seen.size());
+        assertEquals(":server 001 bot :Welcome", seen.get(0));
+    }
+
+    @Test
+    public void toleratesAnUnparseableLine() {
+        EmbeddedChannel channel = connect(config("bot", null));
+        drain(channel);
+
+        channel.writeInbound(":");
+
+        assertFalse(registered.isDone());
+        assertTrue(channel.isOpen());
+    }
+
+    private RegistrationConfiguration config(String nick, String password) {
+        RegistrationConfiguration configuration = new RegistrationConfiguration();
+        configuration.setNick(nick);
+        configuration.setPassword(password);
+        return configuration;
+    }
+
+    private EmbeddedChannel connect(RegistrationConfiguration configuration) {
+        // Constructing with the handler fires channelActive, as a real connect does.
+        return new EmbeddedChannel(new RegistrationHandler(configuration, registered));
+    }
+
+    private static void drain(EmbeddedChannel channel) {
+        while (channel.readOutbound() != null) {
+            // discard the handshake so each test asserts only what follows
+        }
+    }
+
+    private void assertFailedWith(String expectedFragment) {
+        assertTrue("expected the handshake to fail", registered.isCompletedExceptionally());
+        try {
+            registered.get();
+            fail("expected an exception");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            fail("interrupted");
+        } catch (ExecutionException e) {
+            assertTrue(e.getCause() instanceof IRCClientException);
+            assertTrue(e.getCause().getMessage(),
+                    e.getCause().getMessage().contains(expectedFragment));
+        }
+    }
+}

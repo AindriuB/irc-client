@@ -21,14 +21,26 @@ ClientConfiguration configuration = new ClientConfigurationBuilder()
         .host("irc.example.org")
         .port(6697)
         .secure(true)
+        .nick("mybot")                    // enables the registration handshake
+        .password("hunter2")              // optional; Twitch takes oauth:... here
+        .capability("twitch.tv/tags")     // optional IRCv3 capabilities
         .eventListener(new LoggingEventHandler())
         .build();
 
 BasicIRCClient client = new BasicIRCClient(configuration);
-client.connect();
+client.connect();                         // returns once the server accepts registration
 client.sendCommand(new Join("#channel"));
-client.disconnect(); // sends QUIT, then closes
+client.sendCommand(new PrivMsg("#channel", "hello"));
+client.disconnect();                      // sends QUIT, then closes
 ```
+
+Setting a nick turns on registration: on connect the client negotiates capabilities,
+sends `PASS`/`NICK`/`USER`, retries with a modified nick if yours is taken, and waits
+for `RPL_WELCOME` before `connect()` returns. Leave the nick unset to drive the
+handshake yourself.
+
+Inbound lines can be parsed with `IRCMessageParser.parse(line)`, which handles
+prefixes, numeric replies and IRCv3 tags.
 
 ## Commands
 
