@@ -2,6 +2,7 @@ package io.github.aindriub.irc.client.impl;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.fail;
 import static org.junit.Assert.assertTrue;
 
 import java.io.ByteArrayOutputStream;
@@ -88,6 +89,23 @@ public class ClientPipelineTest {
 
         assertEquals("PONG :tmi.twitch.tv\r\n", readOutbound());
         assertEquals("the ping is still published to subscribers", 1, received.size());
+    }
+
+    @Test
+    public void echoesThePingTokenBackUnchangedWithoutAColon() {
+        writeInbound("PING LAG1234567\r\n");
+
+        assertEquals("PONG :LAG1234567\r\n", readOutbound());
+    }
+
+    @Test
+    public void rejectsARawSendThatWouldInjectASecondMessage() {
+        try {
+            client.send("PRIVMSG #chan :hi\r\nQUIT");
+            fail("expected the raw send path to reject an injected line break");
+        } catch (IllegalArgumentException expected) {
+            // as expected
+        }
     }
 
     @Test
