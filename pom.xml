@@ -29,25 +29,42 @@
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 		<maven.compiler.source>1.8</maven.compiler.source>
 		<maven.compiler.target>1.8</maven.compiler.target>
+		<!-- 4.1.x is Netty's long-lived line and is still Java 8 compatible. -->
+		<netty.version>4.1.121.Final</netty.version>
+		<!-- slf4j 1.7.x / logback 1.2.x are the last releases that pair with Java 8. -->
+		<slf4j.version>1.7.36</slf4j.version>
+		<logback.version>1.2.13</logback.version>
 	</properties>
 
 	<dependencies>
-		<!-- https://mvnrepository.com/artifact/io.netty/netty-all -->
+		<!-- Specific Netty modules rather than the netty-all aggregate: a library
+		     should not drag HTTP/2, DNS, QUIC and the rest onto its consumers.
+		     netty-handler brings buffer, transport and resolver transitively. -->
 		<dependency>
 			<groupId>io.netty</groupId>
-			<artifactId>netty-all</artifactId>
-			<version>4.1.43.Final</version>
+			<artifactId>netty-handler</artifactId>
+			<version>${netty.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-codec</artifactId>
+			<version>${netty.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-transport</artifactId>
+			<version>${netty.version}</version>
 		</dependency>
 
 		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-api</artifactId>
-			<version>1.7.29</version>
+			<version>${slf4j.version}</version>
 		</dependency>
 		<dependency>
 			<groupId>ch.qos.logback</groupId>
 			<artifactId>logback-classic</artifactId>
-			<version>1.2.3</version>
+			<version>${logback.version}</version>
 			<scope>test</scope>
 		</dependency>
 
