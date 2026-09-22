@@ -2,6 +2,7 @@ package io.github.aindriub.irc.client.bot;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -16,6 +17,8 @@ import org.junit.Before;
 import org.junit.Test;
 
 import io.github.aindriub.irc.client.message.IRCMessage;
+import io.github.aindriub.irc.client.state.ChannelState;
+import io.github.aindriub.irc.client.state.UserStatus;
 import io.github.aindriub.irc.client.testsupport.StubIRCServer;
 
 public class IRCBotTest {
@@ -472,6 +475,103 @@ public class IRCBotTest {
         assertTrue("a bot needs to know it is usable again", awaitEvent("ready"));
         assertTrue("and it should be back in its channels",
                 server.awaitLine("JOIN #one", before, TIMEOUT));
+    }
+
+    @Test
+    public void tracksWhoIsInAChannel() throws Exception {
+        bot = builder().channels("#chan").build();
+        bot.start();
+        assertTrue(server.awaitLine("JOIN #chan", TIMEOUT));
+
+        server.push(":server 353 bot = #chan :@alice +bob bot");
+        server.push(":server 366 bot #chan :End of /NAMES list");
+        long deadline = System.currentTimeMillis() + TIMEOUT;
+        while (bot.getChannelState("#chan") == null && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+
+        ChannelState channel = bot.getChannelState("#chan");
+        assertEquals(3, channel.size());
+        assertTrue(channel.getUser("alice").isOperator());
+        assertTrue(channel.getUser("bob").hasStatus(UserStatus.VOICE));
+
+        server.push(":dave!u@h JOIN #chan");
+        deadline = System.currentTimeMillis() + TIMEOUT;
+        while (!channel.contains("dave") && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue(channel.contains("dave"));
+    }
+
+    @Test
+    public void channelTrackingCanBeSwitchedOff() throws Exception {
+        bot = builder().channels("#chan").trackChannelState(false).build();
+        bot.start();
+        assertTrue(server.awaitLine("JOIN #chan", TIMEOUT));
+
+        server.push(":server 353 bot = #chan :@alice bot");
+        Thread.sleep(200);
+
+        assertNull("a bot that never asks should not pay for the bookkeeping",
+                bot.getChannelState("#chan"));
+        assertNull(bot.getChannelStateTracker());
+    }
+
+    @Test
+    public void theTrackerFollowsTheNickTheServerGaveUs() throws Exception {
+        bot = builder().build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        // Both must agree, or the tracker cannot tell our own PART from anyone else's.
+        assertEquals(bot.getNick(), bot.getChannelStateTracker().getSelfNick());
+    }
+
+    @Test
+    public void ignoresItsOwnNotices() throws Exception {
+        bot = builder().listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.push(":bot!u@h NOTICE #chan :our own notice");
+        server.push(":someone!u@h NOTICE #chan :someone else's");
+
+        assertTrue(awaitEvent("notice #chan someone someone else's"));
+        int notices = 0;
+        for (String event : events) {
+            if (event.startsWith("notice ")) {
+                notices++;
+            }
+        }
+        assertEquals(1, notices);
+    }
+
+    @Test
+    public void copesWithAWelcomeThatNamesNoNick() throws Exception {
+        bot = builder().listener(recording()).build();
+        bot.start();
+
+        // Malformed, but it must not overwrite the nick with null.
+        server.push(":server 001");
+        Thread.sleep(150);
+
+        assertEquals("bot", bot.getNick());
+    }
+
+    @Test
+    public void forwardsUnknownNonNumericCommandsToOnOther() throws Exception {
+        bot = builder().listener(new BotListener() {
+            @Override
+            public void onOther(IRCBot bot, IRCMessage message) {
+                events.add("other " + message.getCommand());
+            }
+        }).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.push(":admin!u@h WALLOPS :server going down");
+
+        assertTrue(awaitEvent("other WALLOPS"));
     }
 
     @Test

@@ -25,6 +25,8 @@ import io.github.aindriub.irc.client.event.MessageListener;
 import io.github.aindriub.irc.client.impl.BasicIRCClient;
 import io.github.aindriub.irc.client.message.IRCMessage;
 import io.github.aindriub.irc.client.message.Numerics;
+import io.github.aindriub.irc.client.state.ChannelState;
+import io.github.aindriub.irc.client.state.ChannelStateTracker;
 
 /**
  * A chat bot on top of {@link BasicIRCClient}: connects, registers, joins its
@@ -56,14 +58,27 @@ public class IRCBot {
      */
     private volatile String nick;
 
+    /**
+     * Null when channel tracking was switched off, since keeping a member list for
+     * a busy channel is work a bot that never reads it should not pay for.
+     */
+    private final ChannelStateTracker channelState;
+
     IRCBot(ClientConfiguration configuration, List<String> channels,
             List<BotListener> listeners, Map<String, CommandHandler> commands,
-            String commandPrefix) {
+            String commandPrefix, boolean trackChannelState) {
         this.channels = new ArrayList<>(channels);
         this.listeners = new CopyOnWriteArrayList<>(listeners);
         this.commands = new LinkedHashMap<>(commands);
         this.commandPrefix = commandPrefix;
         this.nick = configuration.getRegistration().getNick();
+        this.channelState = trackChannelState
+                ? new ChannelStateTracker(configuration.getRegistration().getNick()) : null;
+        if (channelState != null) {
+            // Before the router, so a listener asking who is in a channel during
+            // onJoin sees the join that triggered it.
+            configuration.getMessageHandlers().add(channelState);
+        }
         configuration.getMessageHandlers().add(new Router());
         this.client = new BasicIRCClient(configuration) {
             @Override
@@ -111,6 +126,21 @@ public class IRCBot {
 
     public List<String> getChannels() {
         return client.getJoinedChannels();
+    }
+
+    /**
+     * Who is in a channel and what status they hold, or null when the channel is not
+     * joined or tracking is switched off.
+     */
+    public ChannelState getChannelState(String channel) {
+        return channelState == null ? null : channelState.getChannel(channel);
+    }
+
+    /**
+     * The tracker itself, or null when tracking is switched off.
+     */
+    public ChannelStateTracker getChannelStateTracker() {
+        return channelState;
     }
 
     /**
@@ -299,12 +329,19 @@ public class IRCBot {
             }
         }
 
+        private void rememberNick(String actualNick) {
+            nick = actualNick;
+            if (channelState != null) {
+                channelState.setSelfNick(actualNick);
+            }
+        }
+
         @Override
         protected void onNumeric(String numeric, IRCMessage raw) {
             if (Numerics.RPL_WELCOME.equals(numeric) && raw.getParam(0) != null) {
                 // Authoritative: this is the nick the server actually gave us, which
                 // differs from the configured one after a collision.
-                nick = raw.getParam(0);
+                rememberNick(raw.getParam(0));
             }
             forwardAsOther(raw);
         }

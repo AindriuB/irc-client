@@ -30,6 +30,21 @@ and `replyNotice(..)` sends a NOTICE. The bot never receives its own messages, s
 cannot answer itself into a loop, and a listener that throws is logged rather than
 taking the connection down.
 
+The bot tracks who is in each channel and what status they hold, built from what the
+server sends rather than by polling:
+
+```java
+ChannelState channel = bot.getChannelState("#chat");
+channel.getUsers();                       // everyone, with their statuses
+channel.getOperators();                   // operator and above
+channel.getUser("someone").isOperator();
+channel.getTopic();
+```
+
+It follows joins, parts, quits, kicks, nick changes and mode changes, and rebuilds a
+channel from scratch on each NAMES reply so a reconnect leaves no ghosts behind.
+`trackChannelState(false)` switches it off for a bot that never asks.
+
 `onReady` fires once the bot is in its channels, and again after every reconnect.
 `builder.client()` reaches the full connection configuration — TLS, timeouts, flood
 protection, reconnection — for anything the bot builder does not surface. For lower
