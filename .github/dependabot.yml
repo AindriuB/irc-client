@@ -5,6 +5,24 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # 4.1.x is Netty's long-lived line and the one that stays Java 8
+      # compatible, which is the level this library targets. 4.2 is a new
+      # minor line with API changes, declined in #25. Patch and security
+      # updates within 4.1.x are still wanted - that is how #7 cleared eight
+      # advisories - so only the 4.2 range is ignored.
+      - dependency-name: io.netty:*
+        versions: ['[4.2,)']
+      # slf4j 2.0 runs on Java 8, but it forces consumers onto a 2.0-era
+      # binding, and logback 1.4+ needs Java 11. That leaves a Java 8
+      # consumer with one workable combination. Declined in #21; revisit
+      # together with dropping Java 8, not before.
+      - dependency-name: org.slf4j:*
+        versions: ['[2,)']
+      # Same reasoning from the other end: logback 1.3 is the last line that
+      # runs on Java 8. Test scope only, but the pairing is the point.
+      - dependency-name: ch.qos.logback:*
+        versions: ['[1.3,)']
 
   # The workflows above pin action versions, so they need updating too.
   - package-ecosystem: github-actions
