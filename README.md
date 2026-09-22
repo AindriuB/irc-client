@@ -62,7 +62,7 @@ level use, drive `BasicIRCClient` directly as below.
 <dependency>
     <groupId>io.github.aindriub</groupId>
     <artifactId>irc-client</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0</version>
 </dependency>
 ```
 
@@ -162,6 +162,10 @@ Messages are CRLF terminated by the pipeline, so commands and raw `send(..)` pay
 should not include a line ending. Server `PING` is answered automatically.
 
 `slf4j-api` is the only logging dependency; pick your own binding.
+
+## Licence
+
+Apache License 2.0. See [LICENSE](LICENSE).
 
 ## Building
 

@@ -116,7 +116,7 @@ public final class IRCMessage {
 
     /**
      * True when {@code target} names a channel rather than a user. Channel prefixes
-     * are '#', '&', '!' and '+' (RFC 2811 section 2.1).
+     * are {@code #}, {@code &amp;}, {@code !} and {@code +} (RFC 2811 section 2.1).
      */
     public static boolean isChannel(String target) {
         if (target == null || target.isEmpty()) {
