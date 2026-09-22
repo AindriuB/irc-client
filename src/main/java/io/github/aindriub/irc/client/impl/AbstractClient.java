@@ -258,6 +258,10 @@ public abstract class AbstractClient implements Client {
         // The raw send path has to validate too, or it is a way around the checks
         // every Command performs.
         IRCText.requireText(payload, "payload");
+        // A server truncates an over-long line rather than refusing it, so the part
+        // that does not fit is lost while the part that does looks deliberate.
+        // Failing here makes that visible where it can still be fixed.
+        IRCText.requireFits(payload, configuration.getCharSet());
         ChannelFuture current = channelFuture;
         if (current == null || !current.channel().isActive()) {
             // Previously this quietly reconnected, which since registration exists

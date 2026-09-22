@@ -18,8 +18,14 @@ import io.netty.channel.ChannelPromise;
  *
  * <p>A token bucket holding up to {@code burst} tokens and gaining one every
  * {@code interval}. Messages beyond that are queued in order and released as tokens
- * arrive; nothing is dropped, and a caller's write promise completes when the
- * message actually goes out.
+ * arrive, and a caller's write promise completes when the message actually goes out.
+ *
+ * <p>The queue is bounded. An unbounded one turns producing faster than the rate
+ * into memory growth rather than an error, and Netty's write watermarks cannot
+ * help: this handler accepts every write immediately, so the channel never sees
+ * anything outstanding to apply backpressure about. Past
+ * {@code maxQueueDepth} a write fails with {@link OutboundQueueFullException},
+ * which a caller can catch, count, or back off on.
  *
  * <p>Sits below PingHandler and RegistrationHandler in the pipeline, so their writes
  * start closer to the socket and bypass it. Delaying a PONG would risk the very ping
@@ -32,6 +38,7 @@ public class OutboundRateLimiter extends ChannelDuplexHandler {
 
     private final int burst;
     private final long intervalNanos;
+    private final int maxQueueDepth;
 
     private final Queue<Pending> queued = new ArrayDeque<>();
 
@@ -43,12 +50,23 @@ public class OutboundRateLimiter extends ChannelDuplexHandler {
     public OutboundRateLimiter(FloodConfiguration configuration) {
         this.burst = configuration.getBurst();
         this.intervalNanos = TimeUnit.MILLISECONDS.toNanos(configuration.getInterval());
+        this.maxQueueDepth = configuration.getMaxQueueDepth();
         this.tokens = configuration.getBurst();
         this.lastRefill = System.nanoTime();
     }
 
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
+        // Refill first: a queue that is only full because the bucket has not been
+        // topped up since the last write would refuse a message it could send.
+        refill();
+        if (maxQueueDepth > 0 && tokens < 1.0 && queued.size() >= maxQueueDepth) {
+            promise.tryFailure(new OutboundQueueFullException(queued.size(), maxQueueDepth));
+            // Release whatever is due anyway, so a refused write does not also
+            // stall the messages already waiting behind it.
+            release(ctx);
+            return;
+        }
         queued.add(new Pending(msg, promise));
         release(ctx);
     }
@@ -135,6 +153,13 @@ public class OutboundRateLimiter extends ChannelDuplexHandler {
      */
     public int queueDepth() {
         return queued.size();
+    }
+
+    /**
+     * The depth at which further writes are refused, or zero when unbounded.
+     */
+    public int maxQueueDepth() {
+        return maxQueueDepth;
     }
 
     private static final class Pending {

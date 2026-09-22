@@ -1,5 +1,7 @@
 package io.github.aindriub.irc.client;
 
+import java.nio.charset.Charset;
+
 /**
  * Validation for text that is about to go on the wire.
  *
@@ -10,7 +12,49 @@ package io.github.aindriub.irc.client;
  */
 public final class IRCText {
 
+    /**
+     * The whole message, including the trailing CRLF (RFC 2812 section 2.3).
+     * A server does not reject a longer line, it truncates it, which is worse:
+     * the message arrives looking like something the sender chose to write.
+     */
+    public static final int MAX_MESSAGE_BYTES = 512;
+
+    /**
+     * What a message body may occupy once the command, the target and the CRLF
+     * have taken their share. Not a constant, because the share depends on the
+     * command, so this is only the ceiling.
+     */
+    public static final int MAX_PAYLOAD_BYTES = MAX_MESSAGE_BYTES - 2;
+
     private IRCText() {
+    }
+
+    /**
+     * How many bytes a string occupies on the wire.
+     *
+     * <p>Not its length. In UTF-8 an emoji is one character and four bytes, and
+     * the limit the server applies is counted in bytes, so a check against
+     * {@code String.length()} passes lines the server will cut in half.
+     */
+    public static int byteLength(String value, Charset charset) {
+        return value == null ? 0 : value.getBytes(charset).length;
+    }
+
+    /**
+     * Checks that a rendered command fits in one IRC message.
+     *
+     * @throws IllegalArgumentException when it does not, naming both sizes, since
+     *                                  "too long" without a number leaves the
+     *                                  caller to work out by how much
+     */
+    public static String requireFits(String line, Charset charset) {
+        int bytes = byteLength(line, charset) + 2;
+        if (bytes > MAX_MESSAGE_BYTES) {
+            throw new IllegalArgumentException("message is " + bytes + " bytes including CRLF, "
+                    + "over the " + MAX_MESSAGE_BYTES + " byte limit. The server would truncate "
+                    + "it rather than refuse it. Split it, or see PrivMsg.split.");
+        }
+        return line;
     }
 
     /**

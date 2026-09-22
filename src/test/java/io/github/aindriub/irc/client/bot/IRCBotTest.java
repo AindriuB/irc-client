@@ -288,6 +288,34 @@ public class IRCBotTest {
     }
 
     @Test
+    public void splitsAMessageTooLongForOneLine() throws Exception {
+        bot = builder().build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        StringBuilder longText = new StringBuilder();
+        for (int i = 0; i < 60; i++) {
+            longText.append("the quick brown fox jumps over the lazy dog ");
+        }
+        bot.say("#chan", longText.toString().trim());
+
+        // The server would truncate one over-long line rather than refuse it, so
+        // the tail would vanish and the head would look deliberate.
+        assertTrue(server.awaitLine("PRIVMSG #chan :the quick", before, TIMEOUT));
+        Thread.sleep(300);
+        java.util.List<String> sent = new java.util.ArrayList<>();
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            if (line.startsWith("PRIVMSG #chan :")) {
+                sent.add(line);
+                assertTrue("a sent line was " + line.length() + " chars, over the limit",
+                        line.getBytes("UTF-8").length + 2 <= 512);
+            }
+        }
+        assertTrue("expected several messages, got " + sent.size(), sent.size() > 1);
+    }
+
+    @Test
     public void moderationHelpersReachTheServer() throws Exception {
         bot = builder().build();
         bot.start();

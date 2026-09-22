@@ -47,6 +47,7 @@ public class IRCBot {
     private static final Logger LOGGER = LoggerFactory.getLogger(IRCBot.class);
 
     private final BasicIRCClient client;
+    private final ClientConfiguration configuration;
     private final List<String> channels;
     private final List<BotListener> listeners;
     private final Map<String, CommandHandler> commands;
@@ -67,6 +68,7 @@ public class IRCBot {
     IRCBot(ClientConfiguration configuration, List<String> channels,
             List<BotListener> listeners, Map<String, CommandHandler> commands,
             String commandPrefix, boolean trackChannelState) {
+        this.configuration = configuration;
         this.channels = new ArrayList<>(channels);
         this.listeners = new CopyOnWriteArrayList<>(listeners);
         this.commands = new LinkedHashMap<>(commands);
@@ -144,17 +146,34 @@ public class IRCBot {
     }
 
     /**
-     * Sends a message to a channel or a user.
+     * Sends a message to a channel or a user, splitting it if it is too long for
+     * one IRC message.
+     *
+     * <p>Splitting rather than failing, because a bot's text is usually assembled
+     * from something it did not choose - a quote, a search result, a line of chat -
+     * and the alternative is for the server to truncate it silently. The lower
+     * level {@link io.github.aindriub.irc.client.impl.BasicIRCClient#sendCommand}
+     * still refuses an over-long line, so nothing is split behind the back of a
+     * caller who built the command themselves.
      */
     public void say(String target, String text) {
-        client.sendCommand(new PrivMsg(target, text));
+        for (PrivMsg message : PrivMsg.split(target, text, charset())) {
+            client.sendCommand(message);
+        }
     }
 
     /**
-     * Sends a NOTICE, which other clients will not auto-respond to.
+     * Sends a NOTICE, which other clients will not auto-respond to. Split on the
+     * same terms as {@link #say}.
      */
     public void notice(String target, String text) {
-        client.sendCommand(new Notice(target, text));
+        for (Notice message : Notice.split(target, text, charset())) {
+            client.sendCommand(message);
+        }
+    }
+
+    private java.nio.charset.Charset charset() {
+        return configuration.getCharSet();
     }
 
     public void join(String channel) {

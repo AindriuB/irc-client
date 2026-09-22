@@ -124,6 +124,94 @@ public class OutboundRateLimiterTest {
     }
 
     @Test
+    public void refusesAWriteOnceTheQueueIsFull() {
+        OutboundRateLimiter limiter = new OutboundRateLimiter(config(1, 60_000, 2));
+        EmbeddedChannel channel = new EmbeddedChannel(limiter);
+
+        channel.writeAndFlush("sent");        // spends the only token
+        ChannelFuture first = channel.writeAndFlush("queued one");
+        ChannelFuture second = channel.writeAndFlush("queued two");
+        ChannelFuture refused = channel.writeAndFlush("one too many");
+
+        assertEquals(2, limiter.queueDepth());
+        assertFalse("still waiting for a token", first.isDone());
+        assertFalse(second.isDone());
+
+        assertTrue("a full queue must refuse rather than grow", refused.isDone());
+        assertFalse(refused.isSuccess());
+        assertTrue(String.valueOf(refused.cause()),
+                refused.cause() instanceof OutboundQueueFullException);
+
+        OutboundQueueFullException cause = (OutboundQueueFullException) refused.cause();
+        assertEquals(2, cause.getDepth());
+        assertEquals(2, cause.getLimit());
+    }
+
+    @Test
+    public void refusingOneWriteDoesNotDisturbTheOnesAlreadyWaiting() throws Exception {
+        EmbeddedChannel channel = channel(1, INTERVAL, 1);
+        channel.writeAndFlush("sent");
+        channel.readOutbound();
+        ChannelFuture waiting = channel.writeAndFlush("queued");
+
+        channel.writeAndFlush("refused");
+
+        // The refused message must not take the queued one down with it.
+        List<String> released = drainOverTime(channel, 1);
+        assertEquals(java.util.Arrays.asList("queued"), released);
+        assertTrue(waiting.isSuccess());
+    }
+
+    @Test
+    public void acceptsAgainOnceTheQueueDrains() throws Exception {
+        EmbeddedChannel channel = channel(1, INTERVAL, 1);
+        channel.writeAndFlush("sent");
+        channel.readOutbound();
+        channel.writeAndFlush("queued");
+        assertFalse(channel.writeAndFlush("refused").isSuccess());
+
+        drainOverTime(channel, 1);
+
+        // A full queue is a moment, not a state: once it drains, writes work.
+        ChannelFuture later = channel.writeAndFlush("later");
+        drainOverTime(channel, 1);
+        assertTrue(later.isDone() && later.isSuccess());
+    }
+
+    @Test
+    public void aWriteThatCanGoOutImmediatelyIsNeverRefused() {
+        EmbeddedChannel channel = channel(5, INTERVAL, 1);
+
+        // Five tokens and a queue limit of one: the limit applies to waiting, not
+        // to sending, so none of these should be refused.
+        for (int i = 0; i < 5; i++) {
+            assertTrue("token " + i + " should have gone out",
+                    channel.writeAndFlush("m" + i).isSuccess());
+        }
+    }
+
+    @Test
+    public void zeroMeansUnbounded() {
+        OutboundRateLimiter limiter = new OutboundRateLimiter(config(1, 60_000, 0));
+        EmbeddedChannel channel = new EmbeddedChannel(limiter);
+
+        channel.writeAndFlush("sent");
+        for (int i = 0; i < 50; i++) {
+            assertFalse("nothing should be refused when unbounded",
+                    channel.writeAndFlush("m" + i).isDone());
+        }
+        assertEquals(50, limiter.queueDepth());
+        assertEquals(0, limiter.maxQueueDepth());
+    }
+
+    @Test
+    public void defaultsToABoundedQueue() {
+        // The default matters: it is what protects a bot whose author never read
+        // this class.
+        assertTrue(new FloodConfiguration().getMaxQueueDepth() > 0);
+    }
+
+    @Test
     public void flushWithNothingQueuedStillReachesTheChannel() {
         EmbeddedChannel channel = channel(5, INTERVAL);
 
@@ -153,10 +241,20 @@ public class OutboundRateLimiterTest {
         return new EmbeddedChannel(new OutboundRateLimiter(config(burst, interval)));
     }
 
+    private static EmbeddedChannel channel(int burst, long interval, int maxQueueDepth) {
+        return new EmbeddedChannel(
+                new OutboundRateLimiter(config(burst, interval, maxQueueDepth)));
+    }
+
     private static FloodConfiguration config(int burst, long interval) {
+        return config(burst, interval, 0);
+    }
+
+    private static FloodConfiguration config(int burst, long interval, int maxQueueDepth) {
         FloodConfiguration flood = new FloodConfiguration();
         flood.setBurst(burst);
         flood.setInterval(interval);
+        flood.setMaxQueueDepth(maxQueueDepth);
         return flood;
     }
 }
