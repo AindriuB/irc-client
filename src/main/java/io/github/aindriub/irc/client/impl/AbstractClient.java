@@ -21,6 +21,8 @@ import io.github.aindriub.irc.client.configuration.ClientConfiguration;
 import io.github.aindriub.irc.client.configuration.ConnectionConfiguration;
 import io.github.aindriub.irc.client.configuration.ReconnectConfiguration;
 import io.github.aindriub.irc.client.handler.ConnectionLostHandler;
+import io.github.aindriub.irc.client.handler.IdleConnectionHandler;
+import io.github.aindriub.irc.client.handler.OutboundRateLimiter;
 import io.github.aindriub.irc.client.handler.InboundIRCMessageEventHandler;
 import io.github.aindriub.irc.client.handler.IRCMessageDecoder;
 import io.github.aindriub.irc.client.handler.InboundMessageEventHandler;
@@ -43,6 +45,7 @@ import io.netty.handler.codec.string.LineEncoder;
 import io.netty.handler.codec.string.LineSeparator;
 import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
@@ -147,6 +150,12 @@ public abstract class AbstractClient implements Client {
         // it so that callers never have to.
         pipeline.addLast("lineEncoder",
                 new LineEncoder(LineSeparator.WINDOWS, configuration.getCharSet()));
+        long readTimeout = configuration.getConnection().getReadTimeout();
+        if (readTimeout > 0) {
+            pipeline.addLast("idleStateHandler",
+                    new IdleStateHandler(readTimeout, 0, 0, TimeUnit.MILLISECONDS));
+            pipeline.addLast("idleConnectionHandler", new IdleConnectionHandler());
+        }
         pipeline.addLast("pingHandler", new PingHandler());
         if (configuration.getRegistration().isConfigured()) {
             registered = new CompletableFuture<>();
@@ -164,6 +173,14 @@ public abstract class AbstractClient implements Client {
         }
         pipeline.addLast("inboundMessageEventHandler",
                 new InboundMessageEventHandler(configuration.getEventHandlers()));
+
+        if (configuration.getFlood().isEnabled()) {
+            // Below the ping, idle and registration handlers, so their writes start
+            // closer to the socket and are never throttled: delaying a PONG or the
+            // handshake would cause the very timeouts they exist to prevent.
+            pipeline.addLast("outboundRateLimiter",
+                    new OutboundRateLimiter(configuration.getFlood()));
+        }
 
         if (!configuration.getMessageHandlers().isEmpty()) {
             // Last, so that raw subscribers and output streams see the unparsed line
@@ -255,10 +272,16 @@ public abstract class AbstractClient implements Client {
             return;
         }
         try {
-            write.sync();
+            // await() rather than sync(): sync() rethrows Netty's own failure cause
+            // unwrapped, so a channel that died between the check above and the write
+            // surfaced as a raw ClosedChannelException rather than ours.
+            write.await();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IRCClientException("Interrupted while sending: " + payload, e);
+        }
+        if (!write.isSuccess()) {
+            throw new IRCClientException("Failed to send: " + payload, write.cause());
         }
     }
 

@@ -354,14 +354,13 @@ public class ReconnectTest {
     }
 
     @Test
-    public void anInterruptSurfacesFromTheSendThatDisconnectPerforms() throws Exception {
+    public void sendIsInterruptible() throws Exception {
         client = client(false);
         client.connect();
 
-        // disconnect() sends QUIT first, so that is where the interrupt lands.
         Thread.currentThread().interrupt();
         try {
-            client.disconnect();
+            client.sendCommand(new PrivMsg("#chan", "hi"));
             fail("expected the interrupt to surface");
         } catch (IRCClientException e) {
             assertTrue(e.getMessage(), e.getMessage().contains("Interrupted while sending"));
@@ -370,6 +369,21 @@ public class ReconnectTest {
         } finally {
             Thread.interrupted();
         }
+    }
+
+    @Test
+    public void disconnectCompletesEvenWhenTheServerHasGoneAway() throws Exception {
+        client = client(false);
+        client.connect();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.close();
+        Thread.sleep(200);
+
+        // The QUIT cannot land, but that is no reason to fail a disconnect.
+        client.disconnect();
+
+        assertFalse(client.isConnected());
     }
 
     @Test

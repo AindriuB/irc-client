@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.aindriub.irc.client.CommandClient;
+import io.github.aindriub.irc.client.IRCClientException;
 import io.github.aindriub.irc.client.command.Command;
 import io.github.aindriub.irc.client.command.Join;
 import io.github.aindriub.irc.client.command.Part;
@@ -110,7 +111,13 @@ public class BasicIRCClient extends AbstractClient implements CommandClient {
         // Guarded: send() now throws when there is no connection, and a deliberate
         // disconnect of an already dead client should still shut down cleanly.
         if (isConnected()) {
-            sendCommand(new Quit());
+            try {
+                sendCommand(new Quit());
+            } catch (IRCClientException e) {
+                // The connection may die between the check and the write. We are
+                // closing anyway, so a QUIT that never lands is not worth failing on.
+                LOGGER.debug("Could not send QUIT before disconnecting", e);
+            }
         }
         super.disconnect();
     }
