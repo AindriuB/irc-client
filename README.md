@@ -89,5 +89,10 @@ should not include a line ending. Server `PING` is answered automatically.
 
 ```
 mvn test                          # unit tests, no network
+mvn verify                        # also enforces the coverage floor
 mvn verify -Pintegration-test     # also runs *IT tests against a real server
 ```
+
+Coverage is reported by JaCoCo to `target/site/jacoco/` and floored at 97% instruction
+/ 95% branch by `mvn verify`. Tests that need a server run against an in-process stub
+(`StubIRCServer`), including over TLS, so the whole suite runs without network access.

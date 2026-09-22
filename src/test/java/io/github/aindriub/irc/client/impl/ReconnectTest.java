@@ -203,6 +203,236 @@ public class ReconnectTest {
                 server.awaitLine("PRIVMSG #chan :pong: ping", before, TIMEOUT));
     }
 
+    @Test
+    public void failsConnectWhenTheServerNeverFinishesTheHandshake() throws Exception {
+        server.withholdWelcome(true);
+        client = new BasicIRCClient(new ClientConfigurationBuilder()
+                .host("127.0.0.1")
+                .port(server.getPort())
+                .secure(false)
+                .nick("bot")
+                .reconnect(false)
+                .registrationTimeout(300)
+                .build());
+
+        try {
+            client.connect();
+            fail("expected connect to time out waiting for registration");
+        } catch (IRCClientException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("did not complete registration"));
+        }
+        assertFalse(client.isRegistered());
+    }
+
+    @Test
+    public void keepsRetryingWhenRegistrationFailsOnEveryReconnect() throws Exception {
+        client = new BasicIRCClient(new ClientConfigurationBuilder()
+                .host("127.0.0.1")
+                .port(server.getPort())
+                .secure(false)
+                .nick("bot")
+                .reconnect(true)
+                .reconnectBackoff(30, 60, 2)
+                .registrationTimeout(3000)
+                .build());
+        client.connect();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        // From now on the server rejects the handshake, so each reconnect gets a
+        // socket but never a registered session.
+        server.refuseRegistration(true);
+        server.dropConnection();
+
+        // The original connection plus exactly maxAttempts retries, then it stops.
+        waitForConnections(3, TIMEOUT);
+        Thread.sleep(400);
+        assertEquals("should give up after maxAttempts", 3, server.getConnectionCount());
+        assertFalse(client.isRegistered());
+    }
+
+    @Test
+    public void givesUpWhenTheServerCannotBeReachedAtAll() throws Exception {
+        client = new BasicIRCClient(new ClientConfigurationBuilder()
+                .host("127.0.0.1")
+                .port(server.getPort())
+                .secure(false)
+                .nick("bot")
+                .reconnect(true)
+                .reconnectBackoff(30, 60, 2)
+                .registrationTimeout(1000)
+                .build());
+        client.connect();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        // The whole server goes away, so the reconnect attempts cannot even connect.
+        server.close();
+        Thread.sleep(600);
+
+        assertFalse(client.isConnected());
+        assertFalse(client.isRegistered());
+    }
+
+    @Test
+    public void joinZeroForgetsEveryTrackedChannel() throws Exception {
+        client = client(true);
+        client.connect();
+        client.sendCommand(new Join(Arrays.asList("#one", "#two")));
+        assertEquals(Arrays.asList("#one", "#two"), client.getJoinedChannels());
+
+        client.sendCommand(Join.partAll());
+
+        assertTrue("JOIN 0 leaves everything", client.getJoinedChannels().isEmpty());
+        // Wait for the server to log it, or the window below starts too early and
+        // catches the JOIN 0 this test just sent.
+        assertTrue(server.awaitLine("JOIN 0", TIMEOUT));
+        int before = server.receivedCount();
+        server.dropConnection();
+        assertTrue(server.awaitLine("NICK bot", before, TIMEOUT));
+        Thread.sleep(200);
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("nothing should be rejoined: " + line, line.startsWith("JOIN"));
+        }
+    }
+
+    @Test
+    public void reconnectsWithoutRegistrationWhenNoNickIsSet() throws Exception {
+        client = new BasicIRCClient(new ClientConfigurationBuilder()
+                .host("127.0.0.1")
+                .port(server.getPort())
+                .secure(false)
+                .reconnect(true)
+                .reconnectBackoff(30, 60, 2)
+                .build());
+        client.connect();
+        assertTrue(client.isConnected());
+        assertFalse("no nick means no handshake to complete", client.isRegistered());
+
+        server.dropConnection();
+
+        waitForConnections(2, TIMEOUT);
+        assertEquals(2, server.getConnectionCount());
+    }
+
+    @Test
+    public void reportsNotRegisteredBeforeConnecting() {
+        client = client(true);
+
+        assertFalse(client.isRegistered());
+        assertFalse(client.isConnected());
+    }
+
+    @Test
+    public void refusesToSendOnceTheConnectionHasGoneAway() throws Exception {
+        client = client(false);
+        client.connect();
+        server.dropConnection();
+        Thread.sleep(200);
+
+        try {
+            client.sendCommand(new PrivMsg("#chan", "hi"));
+            fail("expected send to be refused on a dead connection");
+        } catch (IRCClientException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("Not connected"));
+        }
+    }
+
+    @Test
+    public void addsTheDebugLoggingHandlerWhenAsked() throws Exception {
+        client = new BasicIRCClient(new ClientConfigurationBuilder()
+                .host("127.0.0.1")
+                .port(server.getPort())
+                .secure(false)
+                .nick("bot")
+                .debug(true)
+                .reconnect(false)
+                .build());
+
+        client.connect();
+
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        assertTrue("debug should be usable end to end", client.isRegistered());
+    }
+
+    @Test
+    public void anInterruptSurfacesFromTheSendThatDisconnectPerforms() throws Exception {
+        client = client(false);
+        client.connect();
+
+        // disconnect() sends QUIT first, so that is where the interrupt lands.
+        Thread.currentThread().interrupt();
+        try {
+            client.disconnect();
+            fail("expected the interrupt to surface");
+        } catch (IRCClientException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("Interrupted while sending"));
+            assertTrue("the interrupt must be restored for the caller",
+                    Thread.currentThread().isInterrupted());
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    public void anInterruptWhileWaitingForRegistrationSurfaces() throws Exception {
+        server.withholdWelcome(true);
+        client = new BasicIRCClient(new ClientConfigurationBuilder()
+                .host("127.0.0.1")
+                .port(server.getPort())
+                .secure(false)
+                .nick("bot")
+                .reconnect(false)
+                .registrationTimeout(10000)
+                .build());
+
+        final Thread connecting = Thread.currentThread();
+        Thread interrupter = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // Long enough that the TCP connect has finished and the wait for
+                    // RPL_WELCOME is what gets interrupted.
+                    Thread.sleep(300);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                connecting.interrupt();
+            }
+        });
+        interrupter.setDaemon(true);
+        interrupter.start();
+
+        try {
+            client.connect();
+            fail("expected the interrupt to surface");
+        } catch (IRCClientException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("Interrupted while registering"));
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test
+    public void connectIsInterruptible() throws Exception {
+        client = client(false);
+
+        Thread.currentThread().interrupt();
+        try {
+            client.connect();
+            fail("expected the interrupt to surface");
+        } catch (IRCClientException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("Interrupted"));
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    private void waitForConnections(int expected, long timeoutMillis) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (server.getConnectionCount() < expected && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+    }
+
     private BasicIRCClient client(boolean reconnect) {
         return new BasicIRCClient(new ClientConfigurationBuilder()
                 .host("127.0.0.1")

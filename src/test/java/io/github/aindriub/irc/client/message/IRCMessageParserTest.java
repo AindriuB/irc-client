@@ -145,6 +145,83 @@ public class IRCMessageParserTest {
         assertNull(message.getParam(-1));
     }
 
+    @Test
+    public void dropsALoneTrailingBackslashInATagValue() {
+        // The spec says an escape with nothing after it is discarded.
+        assertEquals("ab", IRCMessageParser.parse("@t=ab\\ PING :x").getTags().get("t"));
+    }
+
+    @Test
+    public void keepsTheCharacterOfAnUnrecognisedTagEscape() {
+        assertEquals("aqb", IRCMessageParser.parse("@t=a\\qb PING :x").getTags().get("t"));
+    }
+
+    @Test
+    public void unescapesACarriageReturnInATagValue() {
+        assertEquals("a\rb", IRCMessageParser.parse("@t=a\\rb PING :x").getTags().get("t"));
+    }
+
+    @Test
+    public void toleratesTrailingSpacesAfterTheLastParameter() {
+        IRCMessage message = IRCMessageParser.parse(":server 001 bot   ");
+
+        assertEquals("001", message.getCommand());
+        assertEquals("bot", message.getParam(0));
+    }
+
+    @Test
+    public void ignoresEmptyTagsBetweenSemicolons() {
+        IRCMessage message = IRCMessageParser.parse("@a=1;;b=2 PING :x");
+
+        assertEquals(2, message.getTags().size());
+        assertEquals("1", message.getTags().get("a"));
+        assertEquals("2", message.getTags().get("b"));
+    }
+
+    @Test
+    public void parsesATagValueContainingAnEqualsSign() {
+        assertEquals("k=v", IRCMessageParser.parse("@t=k=v PING :x").getTags().get("t"));
+    }
+
+    @Test
+    public void parsesACommandWithTagsButNoPrefix() {
+        IRCMessage message = IRCMessageParser.parse("@a=1 PING :x");
+
+        assertNull(message.getPrefix());
+        assertEquals("PING", message.getCommand());
+        assertEquals("1", message.getTags().get("a"));
+    }
+
+    @Test
+    public void hasNoTagsWhenNoneWereSent() {
+        assertTrue(IRCMessageParser.parse("PING :x").getTags().isEmpty());
+    }
+
+    @Test
+    public void toStringShowsTheWholeMessage() {
+        String rendered = IRCMessageParser.parse("@a=1 :n!u@h PRIVMSG #c :hi").toString();
+
+        assertTrue(rendered, rendered.contains("a=1"));
+        assertTrue(rendered, rendered.contains("n!u@h"));
+        assertTrue(rendered, rendered.contains("PRIVMSG"));
+        assertTrue(rendered, rendered.contains("hi"));
+    }
+
+    @Test
+    public void toStringOfABareCommandHasNoStrayPunctuation() {
+        assertEquals("QUIT", IRCMessageParser.parse("QUIT").toString());
+    }
+
+    @Test(expected = IRCParseException.class)
+    public void rejectsTagsWithNoCommand() {
+        IRCMessageParser.parse("@a=1");
+    }
+
+    @Test(expected = IRCParseException.class)
+    public void rejectsALineOfOnlySpaces() {
+        IRCMessageParser.parse("   ");
+    }
+
     @Test(expected = IRCParseException.class)
     public void rejectsAPrefixWithNoCommand() {
         IRCMessageParser.parse(":server");

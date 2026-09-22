@@ -67,10 +67,12 @@ public class Join extends Command {
     }
 
     private static List<String> requireMatching(List<String> channels, List<String> keys) {
-        if (keys == null || channels == null || keys.size() != channels.size()) {
+        // channels is already known non-null: Channels.join validates it in the
+        // super() argument, which Java evaluates before this call.
+        if (keys == null || keys.size() != channels.size()) {
             throw new IllegalArgumentException("a key is required for each channel: "
-                    + (channels == null ? 0 : channels.size()) + " channels, "
-                    + (keys == null ? 0 : keys.size()) + " keys");
+                    + channels.size() + " channels, " + (keys == null ? 0 : keys.size())
+                    + " keys");
         }
         return keys;
     }
