@@ -84,6 +84,17 @@ and a disconnected client cannot be reused — build a new one. `send()` throws 
 than silently reconnecting, because a silent reconnect would leave an unregistered
 connection that rejects every command.
 
+For networks that want SASL rather than a NickServ message:
+
+```java
+.sasl("account", "password")   // adds the sasl capability for you
+```
+
+SASL PLAIN sends the password base64 encoded rather than hashed, so use it over TLS.
+`AUTHENTICATE` redacts itself in logs, as `PASS` does, and `CAP END` is held back
+until authentication finishes, since that is the only window the server leaves open
+for it.
+
 Setting a nick turns on registration: on connect the client negotiates capabilities,
 sends `PASS`/`NICK`/`USER`, retries with a modified nick if yours is taken, and waits
 for `RPL_WELCOME` before `connect()` returns. Leave the nick unset to drive the

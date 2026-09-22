@@ -93,6 +93,26 @@ public class Tier2CommandTest {
         new Ison(Collections.<String>emptyList());
     }
 
+    @Test(expected = IllegalArgumentException.class)
+    public void isonRejectsANullNickList() {
+        new Ison((java.util.List<String>) null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void userhostRejectsANullNickList() {
+        new Userhost((java.util.List<String>) null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void namesRejectsAnEmptyChannelList() {
+        new Names(Collections.<String>emptyList());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void listRejectsAnEmptyChannelList() {
+        ListChannels.of(Collections.<String>emptyList());
+    }
+
     @Test
     public void userhostTakesUpToFiveNicks() {
         assertEquals("USERHOST a b c d e", new Userhost("a", "b", "c", "d", "e").render());

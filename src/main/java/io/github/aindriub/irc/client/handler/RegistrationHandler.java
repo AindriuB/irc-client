@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.github.aindriub.irc.client.IRCClientException;
+import io.github.aindriub.irc.client.command.Authenticate;
 import io.github.aindriub.irc.client.command.Cap;
 import io.github.aindriub.irc.client.command.Command;
 import io.github.aindriub.irc.client.command.Nick;
@@ -39,6 +40,12 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
     private static final Logger LOGGER = LoggerFactory.getLogger(RegistrationHandler.class);
 
     private static final String CAP = "CAP";
+    private static final String AUTHENTICATE = "AUTHENTICATE";
+    private static final String SASL = "sasl";
+    private static final String PLAIN = "PLAIN";
+
+    /** The server's cue that it is ready for our credentials. */
+    private static final String CONTINUE = "+";
 
     private final RegistrationConfiguration configuration;
     private final CompletableFuture<Void> registered;
@@ -46,6 +53,7 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
     private String currentNick;
     private int nickAttempts;
     private boolean capabilitiesNegotiated;
+    private boolean saslInProgress;
 
     public RegistrationHandler(RegistrationConfiguration configuration,
             CompletableFuture<Void> registered) {
@@ -54,6 +62,7 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
         this.currentNick = configuration.getNick();
         this.nickAttempts = 0;
         this.capabilitiesNegotiated = false;
+        this.saslInProgress = false;
     }
 
     @Override
@@ -88,6 +97,25 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
         String command = message.getCommand();
         if (CAP.equals(command)) {
             handleCapability(ctx, message);
+            return;
+        }
+        if (AUTHENTICATE.equals(command)) {
+            handleAuthenticate(ctx, message);
+            return;
+        }
+        if (Numerics.RPL_SASLSUCCESS.equals(command) || Numerics.ERR_SASLALREADY.equals(command)) {
+            LOGGER.info("Authenticated with SASL as {}", configuration.getSaslUsername());
+            saslInProgress = false;
+            endCapabilityNegotiation(ctx);
+            return;
+        }
+        if (Numerics.ERR_SASLFAIL.equals(command) || Numerics.ERR_SASLTOOLONG.equals(command)
+                || Numerics.ERR_SASLABORTED.equals(command)
+                || Numerics.ERR_NICKLOCKED.equals(command)) {
+            // Configured credentials that do not work is a failure, not something to
+            // carry on unauthenticated from.
+            saslInProgress = false;
+            fail(ctx, "SASL authentication failed: " + message);
             return;
         }
         if (Numerics.RPL_WELCOME.equals(command)) {
@@ -127,9 +155,21 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
                 write(ctx, Cap.req(wanted));
                 ctx.flush();
             }
-        } else if ("ACK".equals(subcommand) || "NAK".equals(subcommand)) {
-            if ("NAK".equals(subcommand)) {
-                LOGGER.warn("Server refused capabilities: {}", message.getParam(2));
+        } else if ("ACK".equals(subcommand)) {
+            if (configuration.isSaslConfigured() && acknowledges(message, SASL)) {
+                beginSasl(ctx);
+                // CAP END deliberately not sent: the server keeps registration open
+                // until it is, which is the only window SASL has to run in.
+                return;
+            }
+            endCapabilityNegotiation(ctx);
+        } else if ("NAK".equals(subcommand)) {
+            LOGGER.warn("Server refused capabilities: {}", message.getParam(2));
+            if (configuration.isSaslConfigured()) {
+                // Carrying on would leave us connected but unauthenticated, which is
+                // not what asking for SASL meant.
+                fail(ctx, "SASL was configured but the server refused the sasl capability");
+                return;
             }
             endCapabilityNegotiation(ctx);
         }
@@ -158,6 +198,45 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
             }
         }
         return false;
+    }
+
+    private static boolean acknowledges(IRCMessage message, String capability) {
+        String acknowledged = message.getParam(2);
+        if (acknowledged == null) {
+            return false;
+        }
+        for (String name : acknowledged.trim().split("\\s+")) {
+            // A server may acknowledge with a modifier prefix such as '-' or '='.
+            if (capability.equalsIgnoreCase(name) || name.endsWith(capability)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void beginSasl(ChannelHandlerContext ctx) {
+        saslInProgress = true;
+        LOGGER.debug("Starting SASL {} as {}", PLAIN, configuration.getSaslUsername());
+        write(ctx, Authenticate.mechanism(PLAIN));
+        ctx.flush();
+    }
+
+    /**
+     * The server answers our mechanism with a bare "+", meaning send the credentials.
+     */
+    private void handleAuthenticate(ChannelHandlerContext ctx, IRCMessage message) {
+        if (!saslInProgress) {
+            return;
+        }
+        if (!CONTINUE.equals(message.getParam(0))) {
+            LOGGER.debug("Ignoring unexpected AUTHENTICATE: {}", message);
+            return;
+        }
+        for (Authenticate part : Authenticate.plain(configuration.getSaslUsername(),
+                configuration.getSaslPassword())) {
+            write(ctx, part);
+        }
+        ctx.flush();
     }
 
     private void endCapabilityNegotiation(ChannelHandlerContext ctx) {

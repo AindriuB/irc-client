@@ -9,6 +9,8 @@ import io.github.aindriub.irc.client.message.IRCMessage;
 
 public class ClientConfigurationBuilder {
 
+    private static final String SASL_CAPABILITY = "sasl";
+
     private final ClientConfiguration configuration;
 
     /**
@@ -114,6 +116,21 @@ public class ClientConfigurationBuilder {
     }
 
     /**
+     * Authenticates with SASL PLAIN, which most modern networks prefer to a
+     * NickServ message. Requires TLS in practice, since PLAIN sends the password
+     * base64 encoded rather than hashed. Adds the sasl capability for you.
+     */
+    public ClientConfigurationBuilder sasl(String username, String password) {
+        RegistrationConfiguration registration = configuration.getRegistration();
+        registration.setSaslUsername(username);
+        registration.setSaslPassword(Objects.requireNonNull(password, "sasl password"));
+        if (!registration.getCapabilities().contains(SASL_CAPABILITY)) {
+            registration.getCapabilities().add(SASL_CAPABILITY);
+        }
+        return this;
+    }
+
+    /**
      * How long connect() waits for the server to accept registration.
      */
     public ClientConfigurationBuilder registrationTimeout(int registrationTimeoutMillis) {
@@ -174,6 +191,10 @@ public class ClientConfigurationBuilder {
         return this;
     }
 
+    /**
+     * Logs the raw wire traffic. Note that this includes the server password and any
+     * SASL credentials, which the commands themselves take care to redact.
+     */
     public ClientConfigurationBuilder debug(boolean debug) {
         configuration.setDebug(debug);
         return this;
