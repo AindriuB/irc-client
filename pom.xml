@@ -2,11 +2,28 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
-	<groupId>ie.aindriu.irc</groupId>
+	<!-- io.github.<user> is the namespace Maven Central verifies against the
+	     GitHub account, so it needs no separate domain ownership check. -->
+	<groupId>io.github.aindriub</groupId>
 	<artifactId>irc-client</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>irc-client</name>
 	<description>Client Library for IRC</description>
+	<url>https://github.com/AindriuB/irc-client</url>
+
+	<developers>
+		<developer>
+			<id>AindriuB</id>
+			<name>Andrew Bannister</name>
+			<url>https://github.com/AindriuB</url>
+		</developer>
+	</developers>
+
+	<scm>
+		<connection>scm:git:https://github.com/AindriuB/irc-client.git</connection>
+		<developerConnection>scm:git:git@github.com:AindriuB/irc-client.git</developerConnection>
+		<url>https://github.com/AindriuB/irc-client</url>
+	</scm>
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
