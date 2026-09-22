@@ -13,6 +13,7 @@ public class ClientConfiguration {
     private List<EventHandler<String>> eventHandlers;
     private List<OutputStream> outputStreams;
     private ConnectionConfiguration connection;
+    private RegistrationConfiguration registration;
 
     private boolean debug;
 
@@ -20,6 +21,7 @@ public class ClientConfiguration {
         eventHandlers = new ArrayList<>();
         outputStreams = new ArrayList<>();
         connection = new ConnectionConfiguration();
+        registration = new RegistrationConfiguration();
         debug = false;
         charSet = Charset.defaultCharset();
     }
@@ -54,6 +56,14 @@ public class ClientConfiguration {
 
     public void setConnection(ConnectionConfiguration connection) {
         this.connection = connection;
+    }
+
+    public RegistrationConfiguration getRegistration() {
+        return registration;
+    }
+
+    public void setRegistration(RegistrationConfiguration registration) {
+        this.registration = registration;
     }
 
     public List<EventHandler<String>> getEventHandlers() {

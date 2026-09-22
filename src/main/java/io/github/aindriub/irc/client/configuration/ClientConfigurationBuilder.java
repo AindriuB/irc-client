@@ -75,6 +75,51 @@ public class ClientConfigurationBuilder {
         return this;
     }
 
+    /**
+     * Sets the nick and so enables the registration handshake on connect. Username
+     * and realname default to the nick.
+     */
+    public ClientConfigurationBuilder nick(String nick) {
+        configuration.getRegistration().setNick(nick);
+        return this;
+    }
+
+    public ClientConfigurationBuilder username(String username) {
+        configuration.getRegistration().setUsername(username);
+        return this;
+    }
+
+    public ClientConfigurationBuilder realname(String realname) {
+        configuration.getRegistration().setRealname(realname);
+        return this;
+    }
+
+    /**
+     * Server password, or a Twitch {@code oauth:...} token.
+     */
+    public ClientConfigurationBuilder password(String password) {
+        configuration.getRegistration().setPassword(password);
+        return this;
+    }
+
+    /**
+     * Requests an IRCv3 capability. Only capabilities the server actually offers are
+     * requested, so naming one it does not support is harmless.
+     */
+    public ClientConfigurationBuilder capability(String capability) {
+        configuration.getRegistration().getCapabilities()
+                .add(Objects.requireNonNull(capability, "capability"));
+        return this;
+    }
+
+    /**
+     * How long connect() waits for the server to accept registration.
+     */
+    public ClientConfigurationBuilder registrationTimeout(int registrationTimeoutMillis) {
+        configuration.getRegistration().setRegistrationTimeout(registrationTimeoutMillis);
+        return this;
+    }
+
     public ClientConfigurationBuilder debug(boolean debug) {
         configuration.setDebug(debug);
         return this;

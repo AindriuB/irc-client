@@ -1,6 +1,10 @@
 package io.github.aindriub.irc.client.impl;
 
 import java.io.OutputStream;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import javax.net.ssl.SSLException;
 
@@ -15,6 +19,7 @@ import io.github.aindriub.irc.client.configuration.ConnectionConfiguration;
 import io.github.aindriub.irc.client.handler.InboundMessageEventHandler;
 import io.github.aindriub.irc.client.handler.OutputStreamWriterInboundMessageHandler;
 import io.github.aindriub.irc.client.handler.PingHandler;
+import io.github.aindriub.irc.client.handler.RegistrationHandler;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -49,6 +54,12 @@ public abstract class AbstractClient implements Client {
     protected ChannelFuture channelFuture;
     protected EventLoopGroup workerGroup;
     protected ClientConfiguration configuration;
+
+    /**
+     * Completed when the server accepts registration. Replaced on each connect, so
+     * a reconnect waits on its own handshake rather than the previous one.
+     */
+    private volatile CompletableFuture<Void> registered;
 
     public AbstractClient(final ClientConfiguration configuration) {
         this.configuration = configuration;
@@ -111,6 +122,11 @@ public abstract class AbstractClient implements Client {
         pipeline.addLast("lineEncoder",
                 new LineEncoder(LineSeparator.WINDOWS, configuration.getCharSet()));
         pipeline.addLast("pingHandler", new PingHandler());
+        if (configuration.getRegistration().isConfigured()) {
+            registered = new CompletableFuture<>();
+            pipeline.addLast("registrationHandler",
+                    new RegistrationHandler(configuration.getRegistration(), registered));
+        }
 
         int index = 0;
         for (OutputStream outputStream : configuration.getOutputStreams()) {
@@ -135,6 +151,42 @@ public abstract class AbstractClient implements Client {
             Thread.currentThread().interrupt();
             throw new IRCClientException("Interrupted while connecting to " + host + ":" + port, e);
         }
+        if (configuration.getRegistration().isConfigured()) {
+            // connect() returning should mean "ready to use", not just "TCP is open".
+            awaitRegistration();
+        }
+    }
+
+    /**
+     * Blocks until the server accepts registration, so that a caller cannot send a
+     * command into a half-open handshake.
+     */
+    private void awaitRegistration() {
+        CompletableFuture<Void> handshake = registered;
+        int timeout = configuration.getRegistration().getRegistrationTimeout();
+        try {
+            handshake.get(timeout, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IRCClientException("Interrupted while registering", e);
+        } catch (TimeoutException e) {
+            throw new IRCClientException(
+                    "Server did not complete registration within " + timeout + "ms", e);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof IRCClientException) {
+                throw (IRCClientException) cause;
+            }
+            throw new IRCClientException("Registration failed", cause);
+        }
+    }
+
+    /**
+     * True once the server has accepted registration on the current connection.
+     */
+    public boolean isRegistered() {
+        CompletableFuture<Void> handshake = registered;
+        return handshake != null && handshake.isDone() && !handshake.isCompletedExceptionally();
     }
 
     @Override
