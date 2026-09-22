@@ -117,7 +117,9 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
         }
         subcommand = subcommand.toUpperCase(Locale.ROOT);
         if ("LS".equals(subcommand)) {
-            List<String> wanted = offeredAndWanted(message.getTrailing());
+            // getParam(2), not getTrailing(): for a bare "CAP * LS" with no list at
+            // all, getTrailing() would return the subcommand itself.
+            List<String> wanted = offeredAndWanted(message.getParam(2));
             if (wanted.isEmpty()) {
                 LOGGER.debug("Server offers none of the requested capabilities");
                 endCapabilityNegotiation(ctx);
@@ -127,7 +129,7 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
             }
         } else if ("ACK".equals(subcommand) || "NAK".equals(subcommand)) {
             if ("NAK".equals(subcommand)) {
-                LOGGER.warn("Server refused capabilities: {}", message.getTrailing());
+                LOGGER.warn("Server refused capabilities: {}", message.getParam(2));
             }
             endCapabilityNegotiation(ctx);
         }

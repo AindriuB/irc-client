@@ -160,6 +160,13 @@ public class ClientPipelineTest {
     }
 
     @Test
+    public void answersABarePingWithNoToken() {
+        writeInbound("PING\r\n");
+
+        assertEquals("PONG :\r\n", readOutbound());
+    }
+
+    @Test
     public void typedSubscribersSeeTheServerPingToo() {
         writeInbound("PING :tmi.twitch.tv\r\n");
 

@@ -207,6 +207,92 @@ public class RegistrationHandlerTest {
         assertTrue(channel.isOpen());
     }
 
+    @Test
+    public void retriesOnANickCollisionToo() {
+        EmbeddedChannel channel = connect(config("bot", null));
+        drain(channel);
+
+        channel.writeInbound(":server 436 * bot :Nickname collision KILL");
+
+        assertEquals("NICK bot_", channel.readOutbound());
+    }
+
+    @Test
+    public void failsOnAnIllegalNick() {
+        EmbeddedChannel channel = connect(config("bot", null));
+        drain(channel);
+
+        channel.writeInbound(":server 432 * bot :Erroneous nickname");
+
+        assertFailedWith("rejected by the server");
+    }
+
+    @Test
+    public void ignoresACapMessageWithNoSubcommand() {
+        EmbeddedChannel channel = connect(config("bot", null));
+        drain(channel);
+
+        channel.writeInbound(":server CAP");
+
+        assertNull("nothing to negotiate, so nothing to send", channel.readOutbound());
+        assertFalse(registered.isDone());
+    }
+
+    @Test
+    public void endsNegotiationWhenTheServerListsNoCapabilitiesAtAll() {
+        RegistrationConfiguration configuration = config("bot", null);
+        configuration.getCapabilities().add("sasl");
+        EmbeddedChannel channel = connect(configuration);
+        drain(channel);
+
+        // CAP LS with no trailing parameter: the server offers nothing.
+        channel.writeInbound(":server CAP * LS");
+
+        assertEquals("CAP END", channel.readOutbound());
+    }
+
+    @Test
+    public void matchesACapabilityAdvertisedWithABareEquals() {
+        RegistrationConfiguration configuration = config("bot", null);
+        configuration.getCapabilities().add("sasl");
+        EmbeddedChannel channel = connect(configuration);
+        drain(channel);
+
+        channel.writeInbound(":server CAP * LS :sasl= multi-prefix");
+
+        assertEquals("CAP REQ :sasl", channel.readOutbound());
+    }
+
+    @Test
+    public void sendsCapEndOnlyOnce() {
+        RegistrationConfiguration configuration = config("bot", null);
+        configuration.getCapabilities().add("sasl");
+        EmbeddedChannel channel = connect(configuration);
+        drain(channel);
+
+        channel.writeInbound(":server CAP * LS :sasl");
+        assertEquals("CAP REQ :sasl", channel.readOutbound());
+        channel.writeInbound(":server CAP * ACK :sasl");
+        assertEquals("CAP END", channel.readOutbound());
+
+        // A duplicate ACK, which a server is free to send, must not re-END.
+        channel.writeInbound(":server CAP * ACK :sasl");
+
+        assertNull(channel.readOutbound());
+    }
+
+    @Test
+    public void reportsTheNickItSettledOn() {
+        RegistrationHandler handler = new RegistrationHandler(config("bot", null), registered);
+        EmbeddedChannel channel = new EmbeddedChannel(handler);
+        drain(channel);
+        assertEquals("bot", handler.getCurrentNick());
+
+        channel.writeInbound(":server 433 * bot :Nickname is already in use");
+
+        assertEquals("bot_", handler.getCurrentNick());
+    }
+
     private RegistrationConfiguration config(String nick, String password) {
         RegistrationConfiguration configuration = new RegistrationConfiguration();
         configuration.setNick(nick);

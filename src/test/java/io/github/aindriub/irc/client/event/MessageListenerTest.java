@@ -157,9 +157,22 @@ public class MessageListenerTest {
 
     @Test
     public void unoverriddenCallbacksAreHarmless() {
-        // The default implementations do nothing, so a listener can override just one.
-        new MessageListener() {
-        }.publishEvent(new Event<>(IRCMessageParser.parse(":n!u@h PRIVMSG #c :hi")));
+        // Every default does nothing, so a listener can override only what it wants
+        // without the others throwing on a message it never asked about.
+        MessageListener bare = new MessageListener() {
+        };
+        for (String line : new String[] {
+                ":n!u@h PRIVMSG #c :hi",
+                ":n!u@h NOTICE #c :hi",
+                ":n!u@h JOIN #c",
+                ":n!u@h PART #c",
+                ":n!u@h QUIT :bye",
+                ":o!u@h KICK #c n :out",
+                ":n!u@h NICK :other",
+                ":server 001 bot :Welcome",
+                "PING :x" }) {
+            bare.publishEvent(new Event<>(IRCMessageParser.parse(line)));
+        }
     }
 
     @Test

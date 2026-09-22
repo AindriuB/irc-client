@@ -2,6 +2,7 @@ package io.github.aindriub.irc.client.command;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
@@ -112,6 +113,69 @@ public class CommandTest {
     @Test(expected = IllegalArgumentException.class)
     public void capRejectsAnEmptyRequest() {
         Cap.req(Collections.<String>emptyList());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void capRejectsANullRequest() {
+        Cap.req(null);
+    }
+
+    @Test
+    public void capRequestsASingleCapabilityWithoutATrailingSpace() {
+        assertEquals("CAP REQ :sasl", Cap.req(Collections.singletonList("sasl")).render());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void joinRejectsANullChannelList() {
+        new Join((java.util.List<String>) null);
+    }
+
+    @Test
+    public void joinExposesItsChannelsAndKeys() {
+        Join keyless = new Join(Arrays.asList("#one", "#two"));
+        assertEquals(Arrays.asList("#one", "#two"), keyless.getChannels());
+        assertNull("no key means no key", keyless.getKey("#one"));
+        assertNull("an unknown channel has no key", keyless.getKey("#nope"));
+        assertFalse(keyless.isPartAll());
+
+        Join keyed = new Join(Arrays.asList("#one", "#two"), Arrays.asList("k1", "k2"));
+        assertEquals("k1", keyed.getKey("#one"));
+        assertEquals("k2", keyed.getKey("#two"));
+        assertNull(keyed.getKey("#nope"));
+    }
+
+    @Test
+    public void partAllIsRecognisableAsSuch() {
+        assertTrue(Join.partAll().isPartAll());
+        assertFalse(new Join("#zero").isPartAll());
+        assertFalse(new Join(Arrays.asList("0", "#other")).isPartAll());
+    }
+
+    @Test
+    public void partExposesItsChannels() {
+        assertEquals(Arrays.asList("#one"), new Part("#one").getChannels());
+        assertEquals(Arrays.asList("#one", "#two"),
+                new Part(Arrays.asList("#one", "#two"), "bye").getChannels());
+    }
+
+    @Test
+    public void channelListsAreImmutable() {
+        try {
+            new Join("#one").getChannels().add("#two");
+            throw new AssertionError("expected the channel list to be immutable");
+        } catch (UnsupportedOperationException expected) {
+            // as expected
+        }
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void joinRejectsANullKeyList() {
+        new Join(Arrays.asList("#one"), null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void partRejectsAnEmptyChannelList() {
+        new Part(Collections.<String>emptyList());
     }
 
     @Test

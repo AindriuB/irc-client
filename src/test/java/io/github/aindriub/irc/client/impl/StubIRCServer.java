@@ -7,10 +7,15 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.security.KeyStore;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+
 
 /**
  * A minimal in-process IRC server for tests: enough of the handshake to get a
@@ -28,9 +33,48 @@ final class StubIRCServer implements AutoCloseable {
     private volatile Socket currentSocket;
     private volatile boolean running = true;
     private volatile boolean refuseRegistration = false;
+    private volatile boolean withholdWelcome = false;
+
+    /**
+     * A TLS server presenting the self-signed certificate in
+     * src/test/resources/stub-server.p12, so that both the happy path with
+     * trustAllCertificates and the rejection without it can be exercised.
+     *
+     * <p>The keystore is checked in rather than generated: Netty's
+     * SelfSignedCertificate cannot generate one on a modern JDK without
+     * BouncyCastle, and this keeps the tests dependency free.
+     */
+    static StubIRCServer tls() throws Exception {
+        return new StubIRCServer(sslContext());
+    }
+
+    private static SSLContext sslContext() throws Exception {
+        char[] password = "stubstub".toCharArray();
+        KeyStore keyStore = KeyStore.getInstance("PKCS12");
+        try (java.io.InputStream in = StubIRCServer.class
+                .getResourceAsStream("/stub-server.p12")) {
+            if (in == null) {
+                throw new IllegalStateException("stub-server.p12 is missing from test resources");
+            }
+            keyStore.load(in, password);
+        }
+
+        KeyManagerFactory keyManagers = KeyManagerFactory
+                .getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        keyManagers.init(keyStore, password);
+
+        SSLContext context = SSLContext.getInstance("TLS");
+        context.init(keyManagers.getKeyManagers(), null, null);
+        return context;
+    }
 
     StubIRCServer() throws IOException {
-        serverSocket = new ServerSocket(0);
+        this((SSLContext) null);
+    }
+
+    StubIRCServer(SSLContext sslContext) throws IOException {
+        serverSocket = sslContext == null ? new ServerSocket(0)
+                : sslContext.getServerSocketFactory().createServerSocket(0);
         acceptLoop = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -96,6 +140,10 @@ final class StubIRCServer implements AutoCloseable {
             writer.print(":stub CAP * LS :multi-prefix\r\n");
             writer.flush();
         } else if (line.startsWith("USER ")) {
+            if (withholdWelcome) {
+                // Accept the connection but never finish the handshake.
+                return;
+            }
             if (refuseRegistration) {
                 writer.print(":stub 464 * :Password incorrect\r\n");
             } else {
@@ -131,6 +179,13 @@ final class StubIRCServer implements AutoCloseable {
 
     void refuseRegistration(boolean refuse) {
         this.refuseRegistration = refuse;
+    }
+
+    /**
+     * Stay connected but never send RPL_WELCOME, the way a wedged server would.
+     */
+    void withholdWelcome(boolean withhold) {
+        this.withholdWelcome = withhold;
     }
 
     /**

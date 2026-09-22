@@ -6,6 +6,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
 import javax.net.ssl.SSLException;
@@ -76,6 +77,14 @@ public abstract class AbstractClient implements Client {
 
     /** Guards connect and disconnect against each other. */
     private final Object lifecycleLock = new Object();
+
+    /**
+     * Consecutive failed reconnects. Client scoped rather than passed down the
+     * attempt chain: closing a channel fires channelInactive, so a per-call counter
+     * was restarted at 1 by the very close that followed a failed handshake, and
+     * maxAttempts was never reached.
+     */
+    private final AtomicInteger reconnectAttempts = new AtomicInteger();
 
     public AbstractClient(final ClientConfiguration configuration) {
         this.configuration = configuration;
@@ -177,6 +186,7 @@ public abstract class AbstractClient implements Client {
     public void connect() {
         synchronized (lifecycleLock) {
             requireUsable();
+            reconnectAttempts.set(0);
             String host = configuration.getConnection().getHost();
             int port = configuration.getConnection().getPort();
             LOGGER.info("Connecting to {}:{}", host, port);
@@ -292,11 +302,12 @@ public abstract class AbstractClient implements Client {
             return;
         }
         LOGGER.warn("Connection lost; reconnecting");
-        scheduleReconnect(1);
+        scheduleReconnect();
     }
 
-    private void scheduleReconnect(final int attempt) {
+    private void scheduleReconnect() {
         ReconnectConfiguration reconnect = configuration.getReconnect();
+        final int attempt = reconnectAttempts.incrementAndGet();
         if (reconnect.getMaxAttempts() > 0 && attempt > reconnect.getMaxAttempts()) {
             LOGGER.error("Giving up after {} reconnect attempts", reconnect.getMaxAttempts());
             return;
@@ -332,7 +343,9 @@ public abstract class AbstractClient implements Client {
                 if (!future.isSuccess()) {
                     LOGGER.warn("Reconnect attempt {} failed: {}", attempt,
                             String.valueOf(future.cause()));
-                    scheduleReconnect(attempt + 1);
+                    // The channel never went active, so nothing else will drive the
+                    // next attempt.
+                    scheduleReconnect();
                     return;
                 }
                 channelFuture = future;
@@ -344,24 +357,28 @@ public abstract class AbstractClient implements Client {
     private void awaitRegistrationThenResume(final ChannelFuture future, final int attempt) {
         CompletableFuture<Void> handshake = registered;
         if (!configuration.getRegistration().isConfigured() || handshake == null) {
-            onReconnected();
+            reconnectSucceeded();
             return;
         }
         handshake.whenComplete(new BiConsumer<Void, Throwable>() {
             @Override
             public void accept(Void ignored, Throwable error) {
                 if (error == null) {
-                    onReconnected();
+                    reconnectSucceeded();
                     return;
                 }
                 LOGGER.warn("Reconnected but registration failed on attempt {}: {}", attempt,
                         String.valueOf(error));
+                // Closing fires channelInactive, which schedules the next attempt.
+                // Scheduling one here as well would run two chains at once.
                 future.channel().close();
-                // channelInactive will not restart this, because a reconnect attempt
-                // is already in flight, so schedule the next one here.
-                scheduleReconnect(attempt + 1);
             }
         });
+    }
+
+    private void reconnectSucceeded() {
+        reconnectAttempts.set(0);
+        onReconnected();
     }
 
     /**
