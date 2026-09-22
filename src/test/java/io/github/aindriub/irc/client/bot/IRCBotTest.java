@@ -285,6 +285,28 @@ public class IRCBotTest {
     }
 
     @Test
+    public void moderationHelpersReachTheServer() throws Exception {
+        bot = builder().build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        bot.kick("#chan", "someone", "behave");
+        bot.topic("#chan", "a new topic");
+        bot.mode("#chan", "+o", "someone");
+        bot.invite("someone", "#chan");
+        bot.away("making tea");
+        bot.back();
+
+        assertTrue(server.awaitLine("KICK #chan someone :behave", before, TIMEOUT));
+        assertTrue(server.awaitLine("TOPIC #chan :a new topic", before, TIMEOUT));
+        assertTrue(server.awaitLine("MODE #chan +o someone", before, TIMEOUT));
+        assertTrue(server.awaitLine("INVITE someone #chan", before, TIMEOUT));
+        assertTrue(server.awaitLine("AWAY :making tea", before, TIMEOUT));
+        assertTrue(server.awaitLine("AWAY", before, TIMEOUT));
+    }
+
+    @Test
     public void exposesTheUnderlyingClientAndRawMessage() throws Exception {
         final List<IRCMessage> raws = new ArrayList<>();
         bot = builder().listener(new BotListener() {

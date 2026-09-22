@@ -11,10 +11,15 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.aindriub.irc.client.command.Away;
+import io.github.aindriub.irc.client.command.Invite;
 import io.github.aindriub.irc.client.command.Join;
+import io.github.aindriub.irc.client.command.Kick;
+import io.github.aindriub.irc.client.command.Mode;
 import io.github.aindriub.irc.client.command.Notice;
 import io.github.aindriub.irc.client.command.Part;
 import io.github.aindriub.irc.client.command.PrivMsg;
+import io.github.aindriub.irc.client.command.Topic;
 import io.github.aindriub.irc.client.configuration.ClientConfiguration;
 import io.github.aindriub.irc.client.event.MessageListener;
 import io.github.aindriub.irc.client.impl.BasicIRCClient;
@@ -128,6 +133,45 @@ public class IRCBot {
 
     public void part(String channel) {
         client.sendCommand(new Part(channel));
+    }
+
+    /**
+     * Removes someone from a channel. The bot needs operator status.
+     */
+    public void kick(String channel, String nick, String reason) {
+        client.sendCommand(new Kick(channel, nick, reason));
+    }
+
+    /**
+     * Sets a channel topic.
+     */
+    public void topic(String channel, String topic) {
+        client.sendCommand(new Topic(channel, topic));
+    }
+
+    /**
+     * Sets modes, for example {@code mode("#chan", "+o", "someone")}.
+     */
+    public void mode(String target, String modes, String... args) {
+        client.sendCommand(new Mode(target, modes, args));
+    }
+
+    public void invite(String nick, String channel) {
+        client.sendCommand(new Invite(nick, channel));
+    }
+
+    /**
+     * Marks the bot away, so anyone messaging it gets an automatic reply.
+     */
+    public void away(String message) {
+        client.sendCommand(new Away(message));
+    }
+
+    /**
+     * Clears the away status.
+     */
+    public void back() {
+        client.sendCommand(Away.back());
     }
 
     public void addListener(BotListener listener) {
