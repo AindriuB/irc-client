@@ -6,11 +6,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 import io.github.aindriub.irc.client.event.EventHandler;
+import io.github.aindriub.irc.client.message.IRCMessage;
 
 public class ClientConfiguration {
 
     private Charset charSet;
     private List<EventHandler<String>> eventHandlers;
+    private List<EventHandler<IRCMessage>> messageHandlers;
     private List<OutputStream> outputStreams;
     private ConnectionConfiguration connection;
     private RegistrationConfiguration registration;
@@ -19,6 +21,7 @@ public class ClientConfiguration {
 
     public ClientConfiguration() {
         eventHandlers = new ArrayList<>();
+        messageHandlers = new ArrayList<>();
         outputStreams = new ArrayList<>();
         connection = new ConnectionConfiguration();
         registration = new RegistrationConfiguration();
@@ -56,6 +59,18 @@ public class ClientConfiguration {
 
     public void setConnection(ConnectionConfiguration connection) {
         this.connection = connection;
+    }
+
+    /**
+     * Subscribers that receive parsed messages. Raw line subscribers live in
+     * {@link #getEventHandlers()}; both can be used at once.
+     */
+    public List<EventHandler<IRCMessage>> getMessageHandlers() {
+        return messageHandlers;
+    }
+
+    public void setMessageHandlers(List<EventHandler<IRCMessage>> messageHandlers) {
+        this.messageHandlers = messageHandlers;
     }
 
     public RegistrationConfiguration getRegistration() {

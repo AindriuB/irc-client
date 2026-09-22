@@ -39,8 +39,28 @@ sends `PASS`/`NICK`/`USER`, retries with a modified nick if yours is taken, and 
 for `RPL_WELCOME` before `connect()` returns. Leave the nick unset to drive the
 handshake yourself.
 
-Inbound lines can be parsed with `IRCMessageParser.parse(line)`, which handles
-prefixes, numeric replies and IRCv3 tags.
+## Reacting to messages
+
+```java
+.messageListener(new MessageListener() {
+    @Override
+    protected void onMessage(String target, String sender, String text, IRCMessage raw) {
+        if (text.startsWith("!hello")) {
+            client.sendCommand(new Notice(target, "hello " + sender));
+        }
+    }
+})
+```
+
+`MessageListener` dispatches to `onMessage`, `onNotice`, `onJoin`, `onPart`, `onQuit`,
+`onKick`, `onNickChange`, `onNumeric` and `onOther`; override only what you need. Each
+callback also receives the raw `IRCMessage`, so tags, the full prefix and the remaining
+parameters stay reachable. `IRCMessage.isChannel(target)` distinguishes a channel
+message from a direct one.
+
+Raw-line subscribers (`eventListener`) still work and can be used alongside. Parsing
+only happens when a `messageListener` is registered, and `IRCMessageParser.parse(line)`
+is available directly if you want to do it yourself.
 
 ## Commands
 
