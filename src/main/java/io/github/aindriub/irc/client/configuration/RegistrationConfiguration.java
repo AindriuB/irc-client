@@ -30,6 +30,18 @@ public class RegistrationConfiguration {
     private final List<String> capabilities;
 
     /**
+     * SASL account name. Defaults to the nick when a SASL password is set without
+     * one.
+     */
+    private String saslUsername;
+
+    /**
+     * SASL account password. Setting it turns SASL on, which also requires the sasl
+     * capability from the server.
+     */
+    private String saslPassword;
+
+    /**
      * How many times to retry with a modified nick after ERR_NICKNAMEINUSE before
      * giving up.
      */
@@ -44,6 +56,29 @@ public class RegistrationConfiguration {
         capabilities = new ArrayList<>();
         maxNickAttempts = 3;
         registrationTimeout = 15000;
+    }
+
+    /**
+     * True when SASL credentials have been supplied.
+     */
+    public boolean isSaslConfigured() {
+        return saslPassword != null;
+    }
+
+    public String getSaslUsername() {
+        return saslUsername == null ? nick : saslUsername;
+    }
+
+    public void setSaslUsername(String saslUsername) {
+        this.saslUsername = saslUsername;
+    }
+
+    public String getSaslPassword() {
+        return saslPassword;
+    }
+
+    public void setSaslPassword(String saslPassword) {
+        this.saslPassword = saslPassword;
     }
 
     public boolean isConfigured() {

@@ -210,6 +210,55 @@ public class ConfigurationTest {
     }
 
     @Test
+    public void saslIsOffUntilCredentialsAreGiven() {
+        RegistrationConfiguration registration = new RegistrationConfiguration();
+        assertFalse(registration.isSaslConfigured());
+
+        registration.setNick("bot");
+        registration.setSaslPassword("secret");
+
+        assertTrue(registration.isSaslConfigured());
+        assertEquals("the account defaults to the nick", "bot", registration.getSaslUsername());
+        assertEquals("secret", registration.getSaslPassword());
+
+        registration.setSaslUsername("account");
+        assertEquals("account", registration.getSaslUsername());
+    }
+
+    @Test
+    public void theBuilderAddsTheSaslCapabilityForYou() {
+        ClientConfiguration configuration = new ClientConfigurationBuilder()
+                .host("irc.example.org")
+                .port(6697)
+                .nick("bot")
+                .sasl("account", "secret")
+                .build();
+
+        assertTrue("SASL needs the capability, so asking for one implies the other",
+                configuration.getRegistration().getCapabilities().contains("sasl"));
+        assertEquals("account", configuration.getRegistration().getSaslUsername());
+    }
+
+    @Test
+    public void theSaslCapabilityIsNotAddedTwice() {
+        ClientConfiguration configuration = new ClientConfigurationBuilder()
+                .host("irc.example.org")
+                .port(6697)
+                .nick("bot")
+                .capability("sasl")
+                .sasl("account", "secret")
+                .build();
+
+        assertEquals(Arrays.asList("sasl"),
+                configuration.getRegistration().getCapabilities());
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void saslRequiresAPassword() {
+        new ClientConfigurationBuilder().nick("bot").sasl("account", null);
+    }
+
+    @Test
     public void builderSetsEveryConnectionAndRegistrationField() {
         Charset utf8 = Charset.forName("UTF-8");
         OutputStream stream = new ByteArrayOutputStream();

@@ -44,4 +44,25 @@ public final class Numerics {
 
     /** The modes currently set on a channel. */
     public static final String RPL_CHANNELMODEIS = "324";
+
+    /** SASL: now logged in to an account. */
+    public static final String RPL_LOGGEDIN = "900";
+
+    /** SASL: the nick is locked to an account and must authenticate. */
+    public static final String ERR_NICKLOCKED = "902";
+
+    /** SASL: authentication succeeded. */
+    public static final String RPL_SASLSUCCESS = "903";
+
+    /** SASL: authentication failed, usually wrong credentials. */
+    public static final String ERR_SASLFAIL = "904";
+
+    /** SASL: the AUTHENTICATE payload was too long. */
+    public static final String ERR_SASLTOOLONG = "905";
+
+    /** SASL: the exchange was aborted. */
+    public static final String ERR_SASLABORTED = "906";
+
+    /** SASL: already authenticated on this connection. */
+    public static final String ERR_SASLALREADY = "907";
 }

@@ -489,6 +489,35 @@ public class IRCBotTest {
         IRCBot.builder().command("hello", echoCommand());
     }
 
+    @Test(expected = IllegalArgumentException.class)
+    public void theCommandPrefixMustNotBeBlank() {
+        IRCBot.builder().commandPrefix("   ");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void theCommandPrefixMustNotBeNull() {
+        IRCBot.builder().commandPrefix(null);
+    }
+
+    @Test
+    public void isNotRunningBeforeItStarts() {
+        bot = builder().build();
+
+        assertFalse(bot.isRunning());
+    }
+
+    @Test
+    public void deliversAServerSentMessageThatHasNoNick() throws Exception {
+        bot = builder().listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        // A server prefix has no nick part, so the self check must cope with null.
+        server.push(":irc.example.org PRIVMSG #chan :a server notice of sorts");
+
+        assertTrue(awaitEvent("message #chan null a server notice of sorts"));
+    }
+
     @Test(expected = IllegalStateException.class)
     public void theCommandPrefixMustBeSetBeforeAnyCommand() {
         IRCBot.builder().command("!hello", echoCommand()).commandPrefix("~");
