@@ -54,10 +54,12 @@ public final class IRCMessageParser {
         remainder = commandEnd < 0 ? "" : skipSpaces(remainder, commandEnd);
 
         List<String> params = new ArrayList<>();
+        boolean trailing = false;
         while (!remainder.isEmpty()) {
             if (remainder.startsWith(":")) {
                 // Everything after the colon is one trailing parameter, spaces included.
                 params.add(remainder.substring(1));
+                trailing = true;
                 break;
             }
             int end = remainder.indexOf(' ');
@@ -71,7 +73,7 @@ public final class IRCMessageParser {
 
         // Commands are case insensitive on the wire; normalising here means callers
         // can compare against a literal without thinking about it.
-        return new IRCMessage(tags, prefix, command.toUpperCase(Locale.ROOT), params);
+        return new IRCMessage(tags, prefix, command.toUpperCase(Locale.ROOT), params, trailing);
     }
 
     private static void parseTags(String raw, Map<String, String> tags) {
