@@ -1,5 +1,6 @@
 package io.github.aindriub.irc.client.command;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -9,12 +10,15 @@ public class Part extends Command {
 
     private static final String BASE_COMMAND = "PART";
 
+    private final List<String> channels;
+
     public Part(String channel) {
         this(Collections.singletonList(channel));
     }
 
     public Part(List<String> channels) {
         super(BASE_COMMAND + SPACE + Channels.join(channels, "channel"));
+        this.channels = Collections.unmodifiableList(new ArrayList<>(channels));
     }
 
     /**
@@ -27,5 +31,13 @@ public class Part extends Command {
     public Part(List<String> channels, String reason) {
         super(BASE_COMMAND + SPACE + Channels.join(channels, "channel") + SPACE + COLON
                 + IRCText.requireText(reason, "reason"));
+        this.channels = Collections.unmodifiableList(new ArrayList<>(channels));
+    }
+
+    /**
+     * The channels this command leaves.
+     */
+    public List<String> getChannels() {
+        return channels;
     }
 }

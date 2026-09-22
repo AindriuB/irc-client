@@ -34,6 +34,12 @@ client.sendCommand(new PrivMsg("#channel", "hello"));
 client.disconnect();                      // sends QUIT, then closes
 ```
 
+If the connection drops unexpectedly the client reconnects with exponential backoff,
+re-registers and rejoins its channels. A deliberate `disconnect()` never reconnects,
+and a disconnected client cannot be reused — build a new one. `send()` throws rather
+than silently reconnecting, because a silent reconnect would leave an unregistered
+connection that rejects every command.
+
 Setting a nick turns on registration: on connect the client negotiates capabilities,
 sends `PASS`/`NICK`/`USER`, retries with a modified nick if yours is taken, and waits
 for `RPL_WELCOME` before `connect()` returns. Leave the nick unset to drive the

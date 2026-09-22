@@ -4,7 +4,9 @@ import java.io.OutputStream;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BiConsumer;
 
 import javax.net.ssl.SSLException;
 
@@ -16,6 +18,8 @@ import io.github.aindriub.irc.client.IRCClientException;
 import io.github.aindriub.irc.client.IRCText;
 import io.github.aindriub.irc.client.configuration.ClientConfiguration;
 import io.github.aindriub.irc.client.configuration.ConnectionConfiguration;
+import io.github.aindriub.irc.client.configuration.ReconnectConfiguration;
+import io.github.aindriub.irc.client.handler.ConnectionLostHandler;
 import io.github.aindriub.irc.client.handler.InboundIRCMessageEventHandler;
 import io.github.aindriub.irc.client.handler.IRCMessageDecoder;
 import io.github.aindriub.irc.client.handler.InboundMessageEventHandler;
@@ -29,6 +33,7 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
+import io.netty.util.concurrent.GenericFutureListener;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
@@ -53,7 +58,7 @@ public abstract class AbstractClient implements Client {
 
     private final SslContext sslContext;
     protected Bootstrap bootstrap;
-    protected ChannelFuture channelFuture;
+    protected volatile ChannelFuture channelFuture;
     protected EventLoopGroup workerGroup;
     protected ClientConfiguration configuration;
 
@@ -63,8 +68,18 @@ public abstract class AbstractClient implements Client {
      */
     private volatile CompletableFuture<Void> registered;
 
+    /**
+     * Set by disconnect(). Suppresses reconnection, so a deliberate shutdown is not
+     * immediately undone, and rejects later use of a closed client.
+     */
+    private volatile boolean shutdown;
+
+    /** Guards connect and disconnect against each other. */
+    private final Object lifecycleLock = new Object();
+
     public AbstractClient(final ClientConfiguration configuration) {
         this.configuration = configuration;
+        this.shutdown = false;
         this.sslContext = buildSslContext(configuration.getConnection());
         workerGroup = new NioEventLoopGroup();
         bootstrap = new Bootstrap();
@@ -148,22 +163,34 @@ public abstract class AbstractClient implements Client {
             pipeline.addLast("inboundIRCMessageEventHandler",
                     new InboundIRCMessageEventHandler(configuration.getMessageHandlers()));
         }
+
+        pipeline.addLast("connectionLostHandler",
+                new ConnectionLostHandler(new ConnectionLostHandler.Listener() {
+                    @Override
+                    public void connectionLost() {
+                        onConnectionLost();
+                    }
+                }));
     }
 
     @Override
     public void connect() {
-        String host = configuration.getConnection().getHost();
-        int port = configuration.getConnection().getPort();
-        LOGGER.info("Connecting to {}:{}", host, port);
-        try {
-            channelFuture = bootstrap.connect(host, port).sync();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IRCClientException("Interrupted while connecting to " + host + ":" + port, e);
-        }
-        if (configuration.getRegistration().isConfigured()) {
-            // connect() returning should mean "ready to use", not just "TCP is open".
-            awaitRegistration();
+        synchronized (lifecycleLock) {
+            requireUsable();
+            String host = configuration.getConnection().getHost();
+            int port = configuration.getConnection().getPort();
+            LOGGER.info("Connecting to {}:{}", host, port);
+            try {
+                channelFuture = bootstrap.connect(host, port).sync();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IRCClientException(
+                        "Interrupted while connecting to " + host + ":" + port, e);
+            }
+            if (configuration.getRegistration().isConfigured()) {
+                // connect() returning should mean "ready to use", not just "TCP is open".
+                awaitRegistration();
+            }
         }
     }
 
@@ -204,11 +231,21 @@ public abstract class AbstractClient implements Client {
         // The raw send path has to validate too, or it is a way around the checks
         // every Command performs.
         IRCText.requireText(payload, "payload");
-        if (!isConnected()) {
-            connect();
+        ChannelFuture current = channelFuture;
+        if (current == null || !current.channel().isActive()) {
+            // Previously this quietly reconnected, which since registration exists
+            // would leave an unregistered connection that rejects every command.
+            // Reconnection is now the reconnect logic's job, and it re-registers.
+            throw new IRCClientException("Not connected; call connect() first");
+        }
+        ChannelFuture write = current.channel().writeAndFlush(payload);
+        if (current.channel().eventLoop().inEventLoop()) {
+            // A listener replying from a callback runs on the event loop, and
+            // waiting there would deadlock the thread that has to do the writing.
+            return;
         }
         try {
-            channelFuture.channel().writeAndFlush(payload).sync();
+            write.sync();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IRCClientException("Interrupted while sending: " + payload, e);
@@ -221,18 +258,125 @@ public abstract class AbstractClient implements Client {
 
     @Override
     public void disconnect() {
-        LOGGER.info("Disconnecting");
-        try {
-            if (channelFuture != null) {
-                // close(), not closeFuture(): the latter only waits for a close that
-                // something else initiates, so it hung until the peer hung up.
-                channelFuture.channel().close().sync();
+        synchronized (lifecycleLock) {
+            LOGGER.info("Disconnecting");
+            // Set first: closing the channel fires channelInactive, and this is what
+            // tells the reconnect logic the disconnection was deliberate.
+            shutdown = true;
+            ChannelFuture current = channelFuture;
+            try {
+                if (current != null) {
+                    // close(), not closeFuture(): the latter only waits for a close
+                    // that something else initiates, so it hung until the peer did.
+                    current.channel().close().sync();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IRCClientException("Interrupted while closing the connection", e);
+            } finally {
+                workerGroup.shutdownGracefully();
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IRCClientException("Interrupted while closing the connection", e);
-        } finally {
-            workerGroup.shutdownGracefully();
         }
     }
+
+    /**
+     * Called when a connection goes away for any reason. Reconnects with backoff
+     * unless the disconnection was deliberate or reconnection is switched off.
+     */
+    private void onConnectionLost() {
+        if (shutdown) {
+            return;
+        }
+        if (!configuration.getReconnect().isEnabled()) {
+            LOGGER.info("Connection lost; reconnection is disabled");
+            return;
+        }
+        LOGGER.warn("Connection lost; reconnecting");
+        scheduleReconnect(1);
+    }
+
+    private void scheduleReconnect(final int attempt) {
+        ReconnectConfiguration reconnect = configuration.getReconnect();
+        if (reconnect.getMaxAttempts() > 0 && attempt > reconnect.getMaxAttempts()) {
+            LOGGER.error("Giving up after {} reconnect attempts", reconnect.getMaxAttempts());
+            return;
+        }
+        long delay = reconnect.delayFor(attempt);
+        LOGGER.info("Reconnect attempt {} in {}ms", attempt, delay);
+        try {
+            workerGroup.schedule(new Runnable() {
+                @Override
+                public void run() {
+                    tryReconnect(attempt);
+                }
+            }, delay, TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException e) {
+            // The group is shutting down, which means we are on our way out anyway.
+            LOGGER.debug("Not reconnecting, the event loop is shutting down");
+        }
+    }
+
+    /**
+     * Connects without blocking: this runs on an event loop thread, so waiting for
+     * the handshake here would stop the handshake from ever completing.
+     */
+    private void tryReconnect(final int attempt) {
+        if (shutdown) {
+            return;
+        }
+        String host = configuration.getConnection().getHost();
+        int port = configuration.getConnection().getPort();
+        bootstrap.connect(host, port).addListener(new GenericFutureListener<ChannelFuture>() {
+            @Override
+            public void operationComplete(ChannelFuture future) {
+                if (!future.isSuccess()) {
+                    LOGGER.warn("Reconnect attempt {} failed: {}", attempt,
+                            String.valueOf(future.cause()));
+                    scheduleReconnect(attempt + 1);
+                    return;
+                }
+                channelFuture = future;
+                awaitRegistrationThenResume(future, attempt);
+            }
+        });
+    }
+
+    private void awaitRegistrationThenResume(final ChannelFuture future, final int attempt) {
+        CompletableFuture<Void> handshake = registered;
+        if (!configuration.getRegistration().isConfigured() || handshake == null) {
+            onReconnected();
+            return;
+        }
+        handshake.whenComplete(new BiConsumer<Void, Throwable>() {
+            @Override
+            public void accept(Void ignored, Throwable error) {
+                if (error == null) {
+                    onReconnected();
+                    return;
+                }
+                LOGGER.warn("Reconnected but registration failed on attempt {}: {}", attempt,
+                        String.valueOf(error));
+                future.channel().close();
+                // channelInactive will not restart this, because a reconnect attempt
+                // is already in flight, so schedule the next one here.
+                scheduleReconnect(attempt + 1);
+            }
+        });
+    }
+
+    /**
+     * Hook for subclasses to restore per-connection state, such as rejoining
+     * channels. Runs after registration completes on a reconnected channel.
+     */
+    protected void onReconnected() {
+        LOGGER.info("Reconnected");
+    }
+
+    private void requireUsable() {
+        if (shutdown) {
+            throw new IRCClientException(
+                    "This client has been disconnected and cannot be reused");
+        }
+    }
+
 }
