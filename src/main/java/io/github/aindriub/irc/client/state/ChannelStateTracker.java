@@ -36,6 +36,8 @@ public class ChannelStateTracker implements EventHandler<IRCMessage> {
 
     private volatile String selfNick;
 
+    private final ServerSupport serverSupport = new ServerSupport();
+
     /**
      * @param selfNick the client's own nick, so the tracker can tell its own PART or
      *                 KICK (forget the channel) from someone else's (forget the user)
@@ -54,6 +56,14 @@ public class ChannelStateTracker implements EventHandler<IRCMessage> {
 
     public String getSelfNick() {
         return selfNick;
+    }
+
+    /**
+     * What the server said it supports. Populated from its RPL_ISUPPORT lines, with
+     * RFC 2812 defaults until they arrive.
+     */
+    public ServerSupport getServerSupport() {
+        return serverSupport;
     }
 
     /**
@@ -104,7 +114,9 @@ public class ChannelStateTracker implements EventHandler<IRCMessage> {
 
     private void onNumeric(IRCMessage message) {
         String command = message.getCommand();
-        if (Numerics.RPL_NAMREPLY.equals(command)) {
+        if (Numerics.RPL_ISUPPORT.equals(command)) {
+            serverSupport.apply(message);
+        } else if (Numerics.RPL_NAMREPLY.equals(command)) {
             onNamesReply(message);
         } else if (Numerics.RPL_ENDOFNAMES.equals(command)) {
             receivingNames.remove(key(nullToEmpty(message.getParam(1))));
@@ -232,8 +244,9 @@ public class ChannelStateTracker implements EventHandler<IRCMessage> {
     }
 
     /**
-     * {@code MODE #chan +oo one two}: only the status modes are tracked, and only
-     * those consume an argument here.
+     * {@code MODE #chan +oo one two}. Only status modes change what is tracked, but
+     * every mode has to be walked, because a mode that consumes an argument shifts
+     * the position of everything after it. Which ones do is what ISUPPORT tells us.
      */
     private void onMode(IRCMessage message) {
         String name = message.getParam(0);
@@ -257,16 +270,12 @@ public class ChannelStateTracker implements EventHandler<IRCMessage> {
                 adding = false;
                 continue;
             }
-            UserStatus status = UserStatus.fromMode(c);
-            if (status == null) {
-                // Not a status mode. Some of these take an argument and some do not,
-                // and working out which needs the server's ISUPPORT, so stop here
-                // rather than misalign the remaining arguments.
-                return;
-            }
-            String nick = message.getParam(argument++);
-            if (nick != null) {
-                channel.applyStatus(nick, status, adding);
+            boolean consumesArgument = serverSupport.takesParameter(c, adding);
+            String argumentValue = consumesArgument ? message.getParam(argument++) : null;
+
+            UserStatus status = serverSupport.statusFor(c);
+            if (status != null && argumentValue != null) {
+                channel.applyStatus(argumentValue, status, adding);
             }
         }
     }

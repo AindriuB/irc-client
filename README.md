@@ -42,7 +42,11 @@ channel.getTopic();
 ```
 
 It follows joins, parts, quits, kicks, nick changes and mode changes, and rebuilds a
-channel from scratch on each NAMES reply so a reconnect leaves no ghosts behind.
+channel from scratch on each NAMES reply so a reconnect leaves no ghosts behind. Mode
+parsing uses the server's own `CHANMODES` and `PREFIX` definitions, read from its
+`RPL_ISUPPORT` lines, so it knows which modes consume an argument rather than
+guessing: `bot.getChannelStateTracker().getServerSupport()` exposes the rest of what
+the server advertised.
 `trackChannelState(false)` switches it off for a bot that never asks.
 
 `onReady` fires once the bot is in its channels, and again after every reconnect.

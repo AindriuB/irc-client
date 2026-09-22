@@ -65,4 +65,7 @@ public final class Numerics {
 
     /** SASL: already authenticated on this connection. */
     public static final String ERR_SASLALREADY = "907";
+
+    /** What the server supports, sent as several lines after registration. */
+    public static final String RPL_ISUPPORT = "005";
 }

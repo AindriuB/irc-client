@@ -178,15 +178,46 @@ public class ChannelStateTrackerTest {
     }
 
     @Test
-    public void stopsAtAModeItCannotInterpret() {
+    public void skipsPastTheArgumentsOfNonStatusModes() {
         feed(":server 353 bot = #chan :alice");
 
-        // Whether +k takes an argument needs the server's ISUPPORT, so guessing would
-        // misalign everything after it. Better to apply nothing than the wrong thing.
+        // +k consumes "secret", so +o takes "alice". Before ISUPPORT was read this
+        // had to give up here rather than risk misaligning the arguments.
         feed(":bot!u@h MODE #chan +ko secret alice");
 
-        assertFalse("alice must not be given op from a misread argument",
-                tracker.getChannel("#chan").getUser("alice").isOperator());
+        assertTrue(tracker.getChannel("#chan").getUser("alice").isOperator());
+    }
+
+    @Test
+    public void followsTheServersOwnModeDefinitions() {
+        feed(":server 005 bot CHANMODES=beI,k,l,imnpst PREFIX=(ohv)@%+ "
+                + ":are supported by this server");
+        feed(":server 353 bot = #chan :alice");
+
+        // +l takes an argument when set, so +o gets "alice" and not "50".
+        feed(":bot!u@h MODE #chan +lo 50 alice");
+
+        assertTrue(tracker.getChannel("#chan").getUser("alice").isOperator());
+    }
+
+    @Test
+    public void aModeThatTakesAnArgumentOnlyWhenSetTakesNoneWhenUnset() {
+        feed(":server 005 bot CHANMODES=beI,k,l,imnpst PREFIX=(ohv)@%+ :are supported");
+        feed(":server 353 bot = #chan :alice");
+
+        // -l consumes nothing, so +o still lines up with "alice".
+        feed(":bot!u@h MODE #chan -l+o alice");
+
+        assertTrue(tracker.getChannel("#chan").getUser("alice").isOperator());
+    }
+
+    @Test
+    public void ignoresAStatusModeWhoseArgumentIsMissing() {
+        feed(":server 353 bot = #chan :alice");
+
+        feed(":bot!u@h MODE #chan +o");
+
+        assertFalse(tracker.getChannel("#chan").getUser("alice").isOperator());
     }
 
     @Test
@@ -310,6 +341,20 @@ public class ChannelStateTrackerTest {
         assertTrue("the mode that did have an argument still applies",
                 tracker.getChannel("#chan").getUser("alice").isOperator());
         assertEquals(1, tracker.getChannel("#chan").size());
+    }
+
+    @Test
+    public void readsTheServersPrefixMapping() {
+        feed(":server 005 bot PREFIX=(qaohv)~&@%+ NETWORK=Example CHANTYPES=# "
+                + ":are supported by this server");
+
+        ServerSupport support = tracker.getServerSupport();
+        assertEquals(UserStatus.OWNER, support.statusFor('q'));
+        assertEquals(UserStatus.HALF_OPERATOR, support.statusFor('h'));
+        assertEquals("Example", support.get("NETWORK"));
+        assertEquals("#", support.get("CHANTYPES"));
+        assertTrue(support.supports("NETWORK"));
+        assertNull(support.get("NOSUCHTOKEN"));
     }
 
     @Test
