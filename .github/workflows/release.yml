@@ -1,0 +1,84 @@
+name: release
+
+# Triggered by pushing a version tag. The tag is cut locally, so the history and
+# the version bump stay under your control; this job only builds, signs and
+# uploads what the tag points at.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and sign without uploading
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK and the signing key
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          # Writes ~/.m2/settings.xml and imports the key, so nothing secret is
+          # ever written into the workspace.
+          server-id: central
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+
+      - name: Check the tag matches the pom version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pom=$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)
+          echo "tag=$tag pom=$pom"
+          if [ "$tag" != "$pom" ]; then
+            echo "::error::tag $tag does not match pom version $pom"
+            exit 1
+          fi
+          case "$pom" in
+            *-SNAPSHOT) echo "::error::refusing to release a snapshot"; exit 1 ;;
+          esac
+
+      - name: Build, test and sign
+        run: mvn -B --no-transfer-progress -Prelease verify
+        env:
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Confirm every artifact is signed
+        run: |
+          # Central rejects the upload if any one of the four is missing, and it
+          # is cheaper to find out here than after an upload.
+          for f in target/*.jar target/*.pom; do
+            [ -e "$f" ] || continue
+            test -e "$f.asc" || { echo "::error::$f is not signed"; exit 1; }
+          done
+          ls -1 target/*.asc
+
+      - name: Upload to the Central Portal
+        if: startsWith(github.ref, 'refs/tags/') && inputs.dry_run != true
+        run: mvn -B --no-transfer-progress -Prelease deploy -DskipTests
+        env:
+          MAVEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Keep the signed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: |
+            target/*.jar
+            target/*.asc
+            target/*.pom
