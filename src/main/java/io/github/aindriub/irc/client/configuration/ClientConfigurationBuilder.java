@@ -121,6 +121,28 @@ public class ClientConfigurationBuilder {
         return this;
     }
 
+    /**
+     * Reconnect automatically after an unexpected disconnection. On by default; a
+     * deliberate disconnect() never reconnects either way.
+     */
+    public ClientConfigurationBuilder reconnect(boolean enabled) {
+        configuration.getReconnect().setEnabled(enabled);
+        return this;
+    }
+
+    /**
+     * Backoff between reconnect attempts, and how many to make. Zero attempts means
+     * keep trying indefinitely.
+     */
+    public ClientConfigurationBuilder reconnectBackoff(long initialDelayMillis,
+            long maxDelayMillis, int maxAttempts) {
+        ReconnectConfiguration reconnect = configuration.getReconnect();
+        reconnect.setInitialDelay(initialDelayMillis);
+        reconnect.setMaxDelay(maxDelayMillis);
+        reconnect.setMaxAttempts(maxAttempts);
+        return this;
+    }
+
     public ClientConfigurationBuilder debug(boolean debug) {
         configuration.setDebug(debug);
         return this;

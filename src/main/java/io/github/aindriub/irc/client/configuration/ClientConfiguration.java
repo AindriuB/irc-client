@@ -16,6 +16,7 @@ public class ClientConfiguration {
     private List<OutputStream> outputStreams;
     private ConnectionConfiguration connection;
     private RegistrationConfiguration registration;
+    private ReconnectConfiguration reconnect;
 
     private boolean debug;
 
@@ -25,6 +26,7 @@ public class ClientConfiguration {
         outputStreams = new ArrayList<>();
         connection = new ConnectionConfiguration();
         registration = new RegistrationConfiguration();
+        reconnect = new ReconnectConfiguration();
         debug = false;
         charSet = Charset.defaultCharset();
     }
@@ -79,6 +81,14 @@ public class ClientConfiguration {
 
     public void setRegistration(RegistrationConfiguration registration) {
         this.registration = registration;
+    }
+
+    public ReconnectConfiguration getReconnect() {
+        return reconnect;
+    }
+
+    public void setReconnect(ReconnectConfiguration reconnect) {
+        this.reconnect = reconnect;
     }
 
     public List<EventHandler<String>> getEventHandlers() {
