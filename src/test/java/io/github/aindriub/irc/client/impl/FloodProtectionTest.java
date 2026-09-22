@@ -10,6 +10,7 @@ import org.junit.Test;
 
 import io.github.aindriub.irc.client.command.PrivMsg;
 import io.github.aindriub.irc.client.configuration.ClientConfigurationBuilder;
+import io.github.aindriub.irc.client.testsupport.StubIRCServer;
 
 /**
  * The limiter is placed below the ping and registration handlers precisely so that

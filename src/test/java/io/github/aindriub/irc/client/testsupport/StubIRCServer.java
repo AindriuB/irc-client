@@ -1,4 +1,4 @@
-package io.github.aindriub.irc.client.impl;
+package io.github.aindriub.irc.client.testsupport;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -21,7 +21,7 @@ import javax.net.ssl.SSLContext;
  * A minimal in-process IRC server for tests: enough of the handshake to get a
  * client registered, plus the ability to drop a connection on demand.
  */
-final class StubIRCServer implements AutoCloseable {
+public final class StubIRCServer implements AutoCloseable {
 
     private static final Charset UTF_8 = Charset.forName("UTF-8");
 
@@ -44,7 +44,7 @@ final class StubIRCServer implements AutoCloseable {
      * SelfSignedCertificate cannot generate one on a modern JDK without
      * BouncyCastle, and this keeps the tests dependency free.
      */
-    static StubIRCServer tls() throws Exception {
+    public static StubIRCServer tls() throws Exception {
         return new StubIRCServer(sslContext());
     }
 
@@ -68,11 +68,11 @@ final class StubIRCServer implements AutoCloseable {
         return context;
     }
 
-    StubIRCServer() throws IOException {
+    public StubIRCServer() throws IOException {
         this((SSLContext) null);
     }
 
-    StubIRCServer(SSLContext sslContext) throws IOException {
+    public StubIRCServer(SSLContext sslContext) throws IOException {
         serverSocket = sslContext == null ? new ServerSocket(0)
                 : sslContext.getServerSocketFactory().createServerSocket(0);
         acceptLoop = new Thread(new Runnable() {
@@ -85,11 +85,11 @@ final class StubIRCServer implements AutoCloseable {
         acceptLoop.start();
     }
 
-    int getPort() {
+    public int getPort() {
         return serverSocket.getLocalPort();
     }
 
-    int getConnectionCount() {
+    public int getConnectionCount() {
         return connections.get();
     }
 
@@ -156,7 +156,7 @@ final class StubIRCServer implements AutoCloseable {
     /**
      * Pushes a line to the connected client.
      */
-    void push(String line) throws IOException {
+    public void push(String line) throws IOException {
         Socket socket = currentSocket;
         if (socket == null) {
             throw new IllegalStateException("no client is connected");
@@ -170,21 +170,21 @@ final class StubIRCServer implements AutoCloseable {
      * Drops the live connection the way a network failure or a server restart would,
      * without the client having asked for it.
      */
-    void dropConnection() throws IOException {
+    public void dropConnection() throws IOException {
         Socket socket = currentSocket;
         if (socket != null) {
             socket.close();
         }
     }
 
-    void refuseRegistration(boolean refuse) {
+    public void refuseRegistration(boolean refuse) {
         this.refuseRegistration = refuse;
     }
 
     /**
      * Stay connected but never send RPL_WELCOME, the way a wedged server would.
      */
-    void withholdWelcome(boolean withhold) {
+    public void withholdWelcome(boolean withhold) {
         this.withholdWelcome = withhold;
     }
 
@@ -192,7 +192,7 @@ final class StubIRCServer implements AutoCloseable {
      * Waits for a line starting with the given prefix, counting only those that
      * arrive at or after {@code fromIndex} in the received log.
      */
-    boolean awaitLine(String prefix, int fromIndex, long timeoutMillis)
+    public boolean awaitLine(String prefix, int fromIndex, long timeoutMillis)
             throws InterruptedException {
         long deadline = System.currentTimeMillis() + timeoutMillis;
         synchronized (received) {
@@ -211,17 +211,17 @@ final class StubIRCServer implements AutoCloseable {
         }
     }
 
-    boolean awaitLine(String prefix, long timeoutMillis) throws InterruptedException {
+    public boolean awaitLine(String prefix, long timeoutMillis) throws InterruptedException {
         return awaitLine(prefix, 0, timeoutMillis);
     }
 
-    int receivedCount() {
+    public int receivedCount() {
         synchronized (received) {
             return received.size();
         }
     }
 
-    List<String> getReceived() {
+    public List<String> getReceived() {
         synchronized (received) {
             return new ArrayList<>(received);
         }
