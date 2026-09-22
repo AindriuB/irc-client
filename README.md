@@ -166,6 +166,26 @@ Commands validate their arguments and reject anything containing CR, LF or NUL, 
 input taken from chat cannot inject a second IRC message. `render()` is the wire
 form; `toString()` is the log form, and differs only for `Pass`, which redacts.
 
+### Message length
+
+IRC caps a message at 512 bytes including the CRLF, and a server **truncates** an
+over-long line rather than refusing it — so the part that does not fit is lost and
+the part that does looks like what you meant to say.
+
+`bot.say(..)` and `bot.notice(..)` split, because a bot's text is usually assembled
+from something it did not choose. Building the command yourself does not:
+`sendCommand(new PrivMsg(..))` and `send(..)` refuse an over-long line, so nothing
+is ever split behind your back.
+
+```java
+PrivMsg.split("#chan", text, StandardCharsets.UTF_8)   // pieces that fit
+```
+
+The limit is counted in **bytes, not characters** — an emoji is one character and
+four bytes in UTF-8 — so the splitter takes the connection's charset and never cuts
+a character in half. It prefers to break on a space, falling back to the byte budget
+for a long run with none, such as a URL.
+
 Messages are CRLF terminated by the pipeline, so commands and raw `send(..)` payloads
 should not include a line ending. Server `PING` is answered automatically.
 
