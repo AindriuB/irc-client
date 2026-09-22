@@ -59,6 +59,34 @@ public class IRCMessageParserTest {
     }
 
     @Test
+    public void reportsNoTrailingWhenTheMessageHadNone() {
+        IRCMessage message = IRCMessageParser.parse(":server 353 bot = #chan");
+
+        assertFalse(message.hasTrailing());
+        // The old behaviour returned "#chan" here, so a caller reading it as the
+        // name list added the channel itself as a member.
+        assertNull(message.getTrailing());
+        assertEquals("#chan", message.getParam(2));
+    }
+
+    @Test
+    public void reportsTrailingOnlyForAColonPrefixedParameter() {
+        assertTrue(IRCMessageParser.parse("PRIVMSG #chan :hello").hasTrailing());
+        assertEquals("hello", IRCMessageParser.parse("PRIVMSG #chan :hello").getTrailing());
+
+        // A single word final parameter is a middle parameter, not a trailing one.
+        assertFalse(IRCMessageParser.parse("PRIVMSG #chan hello").hasTrailing());
+        assertNull(IRCMessageParser.parse("PRIVMSG #chan hello").getTrailing());
+        assertEquals("hello", IRCMessageParser.parse("PRIVMSG #chan hello").getParam(1));
+    }
+
+    @Test
+    public void aBareCommandHasNoTrailing() {
+        assertFalse(IRCMessageParser.parse("QUIT").hasTrailing());
+        assertNull(IRCMessageParser.parse("QUIT").getTrailing());
+    }
+
+    @Test
     public void recognisesNumericReplies() {
         assertTrue(IRCMessageParser.parse(":server 001 bot :Welcome").isNumeric());
         assertFalse(IRCMessageParser.parse("PING :x").isNumeric());

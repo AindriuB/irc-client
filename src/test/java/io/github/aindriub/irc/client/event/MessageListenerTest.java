@@ -124,6 +124,15 @@ public class MessageListenerTest {
     }
 
     @Test
+    public void deliversAMessageBodySentWithoutAColon() {
+        // Legal, if unusual: a single word body needs no colon, and reading it as a
+        // trailing parameter would drop it.
+        publish(":nick!user@host PRIVMSG #chan hello");
+
+        assertEquals("message #chan nick hello", only());
+    }
+
+    @Test
     public void dispatchesNumericReplies() {
         publish(":server 001 bot :Welcome");
 

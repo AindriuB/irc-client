@@ -25,10 +25,12 @@ public abstract class MessageListener implements EventHandler<IRCMessage> {
         IRCMessage message = event.getPayload();
         switch (message.getCommand()) {
         case "PRIVMSG":
-            onMessage(message.getParam(0), message.getNick(), message.getTrailing(), message);
+            // getParam(1), not getTrailing(): a single word body is a legal middle
+            // parameter, and dropping it would lose the message.
+            onMessage(message.getParam(0), message.getNick(), message.getParam(1), message);
             break;
         case "NOTICE":
-            onNotice(message.getParam(0), message.getNick(), message.getTrailing(), message);
+            onNotice(message.getParam(0), message.getNick(), message.getParam(1), message);
             break;
         case "JOIN":
             onJoin(message.getParam(0), message.getNick(), message);
@@ -37,7 +39,7 @@ public abstract class MessageListener implements EventHandler<IRCMessage> {
             onPart(message.getParam(0), message.getNick(), message);
             break;
         case "QUIT":
-            onQuit(message.getNick(), message.getTrailing(), message);
+            onQuit(message.getNick(), message.getParam(0), message);
             break;
         case "KICK":
             onKick(message.getParam(0), message.getParam(1), message.getNick(), message);

@@ -13,8 +13,8 @@ import java.util.Map;
  * </pre>
  *
  * <p>Tags are the IRCv3 extension (message-tags); Twitch relies on them heavily.
- * The trailing parameter is exposed both as the last entry of {@link #getParams()}
- * and via {@link #getTrailing()}, since callers nearly always want it by name.
+ * The trailing parameter, when there is one, is both the last entry of
+ * {@link #getParams()} and available from {@link #getTrailing()}.
  */
 public final class IRCMessage {
 
@@ -22,12 +22,15 @@ public final class IRCMessage {
     private final String prefix;
     private final String command;
     private final List<String> params;
+    private final boolean trailing;
 
-    IRCMessage(Map<String, String> tags, String prefix, String command, List<String> params) {
+    IRCMessage(Map<String, String> tags, String prefix, String command, List<String> params,
+            boolean trailing) {
         this.tags = Collections.unmodifiableMap(new LinkedHashMap<>(tags));
         this.prefix = prefix;
         this.command = command;
         this.params = Collections.unmodifiableList(params);
+        this.trailing = trailing;
     }
 
     /**
@@ -91,10 +94,24 @@ public final class IRCMessage {
     }
 
     /**
-     * The last parameter, which for most messages is the human readable part.
+     * True when the message ended in a {@code :}-prefixed parameter.
+     */
+    public boolean hasTrailing() {
+        return trailing;
+    }
+
+    /**
+     * The trailing parameter: the {@code :}-prefixed one that runs to the end of the
+     * line, which for most messages is the human readable part.
+     *
+     * <p>Null when the message had none. It deliberately does not fall back to the
+     * last parameter: doing that meant a truncated message handed back whatever
+     * happened to be last, and a caller reading it as the text got a channel name or
+     * a subcommand instead. Use {@link #getParam(int)} when you want a parameter by
+     * position.
      */
     public String getTrailing() {
-        return params.isEmpty() ? null : params.get(params.size() - 1);
+        return trailing && !params.isEmpty() ? params.get(params.size() - 1) : null;
     }
 
     /**
