@@ -114,6 +114,25 @@ A good signature prints `Good signature from` and the key's name.
 | `gpg: signing failed: Bad passphrase` | The passphrase is wrong, or a stale `gpg-agent` has cached an old one. `gpgconf --kill gpg-agent` and retry. |
 | Upload rejected, key not found | The key has not reached the keyserver Central queried. Wait, and send it to more than one. |
 
+## How often
+
+Batched, not per change. Work accumulates on the current `-SNAPSHOT` and goes
+out together.
+
+Three reasons, in order of how much they bite:
+
+1. **A release cannot be withdrawn or replaced.** Fewer of them is fewer chances
+   to publish something wrong permanently.
+2. **Every consumer has to decide about every version.** A stream of releases
+   containing one fix each is work handed to everyone downstream.
+3. **The Central Portal counts files per month.** Each release publishes the jar,
+   sources, javadoc and pom with a signature for each, and the portal warns as
+   the allowance runs down — it was at 906 of 1000 after 1.1.0.
+
+`docs/plan/PLAN.md` lists what is waiting to go out. Cut a release when that
+list stops growing, or sooner if something on it is bad enough that somebody is
+waiting for it.
+
 ## Each release
 
 Two routes. **CI is the better one**: the key lives in GitHub secrets rather

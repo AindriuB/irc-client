@@ -80,6 +80,11 @@ ssl? → logging → lineBasedFrameDecoder → stringDecoder → lineEncoder
   and completes nothing until a token arrives. `0` restores the old unbounded
   behaviour.
 
+- **Releases are batched, not cut per change** (2026-09-23). A release cannot be
+  withdrawn or replaced, each one spends part of a monthly file allowance on the
+  Central Portal, and each one asks everyone downstream whether to upgrade.
+  Changes accumulate on a snapshot until there is a batch worth publishing.
+
 ## Repository topology
 
 Self-contained: `git clone` and `mvn verify`. No sibling checkout is required

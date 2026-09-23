@@ -11,7 +11,21 @@ than no plan.
 
 ## Now
 
-_Nothing open. 1.1.0 released 2026-09-23; `master` is back on a snapshot._
+### Accumulate 1.2.0
+Releases are batched rather than cut per change. A release cannot be withdrawn
+or replaced, every one spends part of a monthly publishing allowance, and each
+one obliges anyone downstream to decide whether to take it. `master` sits at
+`1.2.0-SNAPSHOT` until there is a batch worth shipping.
+
+Waiting to go out:
+
+- **#39** — quote what the server said when TLS never started *(merged)*
+- **#40** — stop the reconnect loop from holding a throttle open *(open)*
+
+Neither reaches `irc-web` until this ships; it pins 1.1.0 and should stay there.
+
+Cut it when the list stops growing, or sooner if something on it is bad enough
+that somebody is waiting. Steps in `RELEASING.md`.
 
 ## Next
 
