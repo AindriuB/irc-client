@@ -11,11 +11,7 @@ than no plan.
 
 ## Now
 
-### Release 1.1.0
-`master` is `1.1.0-SNAPSHOT` and carries two merged changes with new public
-API — `outboundQueueDepth` and `OutboundQueueFullException` from #36,
-`PrivMsg.split`/`Notice.split` and `IRCText.requireFits` from #37. Until it is
-released, `irc-web` cannot use either: it pins 1.0.0. Steps in `RELEASING.md`.
+_Nothing open. 1.1.0 released 2026-09-23; `master` is back on a snapshot._
 
 ## Next
 
