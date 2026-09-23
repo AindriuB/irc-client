@@ -19,10 +19,13 @@ one obliges anyone downstream to decide whether to take it. `master` sits at
 
 Waiting to go out:
 
-- **#39** — quote what the server said when TLS never started *(merged)*
-- **#40** — stop the reconnect loop from holding a throttle open *(open)*
+- **#39** — quote what the server said when TLS never started
+- **#40** — stop the reconnect loop from holding a throttle open, and
+  `ServerRefusedException` with it
 
-Neither reaches `irc-web` until this ships; it pins 1.1.0 and should stay there.
+Both are on `master` and neither reaches `irc-web` until this ships; it pins
+1.1.0 and should stay there. New public API in #40, so 1.2.0 rather than a
+patch.
 
 Cut it when the list stops growing, or sooner if something on it is bad enough
 that somebody is waiting. Steps in `RELEASING.md`.
