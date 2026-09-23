@@ -34,6 +34,7 @@ public final class StubIRCServer implements AutoCloseable {
     private volatile boolean running = true;
     private volatile boolean refuseRegistration = false;
     private volatile boolean withholdWelcome = false;
+    private volatile boolean throttled = false;
 
     /**
      * A TLS server presenting the self-signed certificate in
@@ -144,6 +145,14 @@ public final class StubIRCServer implements AutoCloseable {
                 // Accept the connection but never finish the handshake.
                 return;
             }
+            if (throttled) {
+                // What a throttling server sends: a refusal in its own words,
+                // then the door.
+                writer.print("ERROR :Reconnecting too fast, throttled.\r\n");
+                writer.flush();
+                closeCurrent();
+                return;
+            }
             if (refuseRegistration) {
                 writer.print(":stub 464 * :Password incorrect\r\n");
             } else {
@@ -179,6 +188,25 @@ public final class StubIRCServer implements AutoCloseable {
 
     public void refuseRegistration(boolean refuse) {
         this.refuseRegistration = refuse;
+    }
+
+    /**
+     * Refuse every connection with an ERROR line, the way a server throttling
+     * reconnects does.
+     */
+    public void throttle(boolean throttle) {
+        this.throttled = throttle;
+    }
+
+    private void closeCurrent() {
+        Socket socket = currentSocket;
+        if (socket != null) {
+            try {
+                socket.close();
+            } catch (IOException e) {
+                // already gone
+            }
+        }
     }
 
     /**

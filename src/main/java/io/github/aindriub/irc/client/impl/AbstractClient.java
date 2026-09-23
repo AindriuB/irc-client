@@ -6,6 +6,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 
@@ -23,6 +24,7 @@ import io.github.aindriub.irc.client.configuration.ReconnectConfiguration;
 import io.github.aindriub.irc.client.handler.ConnectionLostHandler;
 import io.github.aindriub.irc.client.handler.IdleConnectionHandler;
 import io.github.aindriub.irc.client.handler.OutboundRateLimiter;
+import io.github.aindriub.irc.client.handler.ServerRefusedException;
 import io.github.aindriub.irc.client.handler.InboundIRCMessageEventHandler;
 import io.github.aindriub.irc.client.handler.IRCMessageDecoder;
 import io.github.aindriub.irc.client.handler.InboundMessageEventHandler;
@@ -88,6 +90,15 @@ public abstract class AbstractClient implements Client {
      * maxAttempts was never reached.
      */
     private final AtomicInteger reconnectAttempts = new AtomicInteger();
+
+    /**
+     * Set when the last attempt ended in the server saying no rather than the
+     * connection simply failing. Read once by the reconnect that follows: a
+     * refusal is a decision, and knocking again a second later tends to confirm it
+     * rather than get past it. EFnet restarts its throttle window on every
+     * attempt inside it, so the short end of the backoff cannot ever escape.
+     */
+    private final AtomicBoolean serverRefused = new AtomicBoolean();
 
     public AbstractClient(final ClientConfiguration configuration) {
         this.configuration = configuration;
@@ -339,7 +350,15 @@ public abstract class AbstractClient implements Client {
             LOGGER.error("Giving up after {} reconnect attempts", reconnect.getMaxAttempts());
             return;
         }
-        long delay = reconnect.delayFor(attempt);
+
+        // Read and cleared together, so it governs exactly the one attempt that
+        // follows the refusal rather than every attempt after it.
+        boolean refused = serverRefused.getAndSet(false);
+        long delay = refused ? reconnect.getMaxDelay() : reconnect.delayFor(attempt);
+        if (refused) {
+            LOGGER.info("The server refused the last attempt, so waiting {}ms rather "
+                    + "than {}ms", delay, reconnect.delayFor(attempt));
+        }
         LOGGER.info("Reconnect attempt {} in {}ms", attempt, delay);
         try {
             workerGroup.schedule(new Runnable() {
@@ -396,6 +415,7 @@ public abstract class AbstractClient implements Client {
                 }
                 LOGGER.warn("Reconnected but registration failed on attempt {}: {}", attempt,
                         String.valueOf(error));
+                noteRefusal(error);
                 // Closing fires channelInactive, which schedules the next attempt.
                 // Scheduling one here as well would run two chains at once.
                 future.channel().close();
@@ -405,7 +425,21 @@ public abstract class AbstractClient implements Client {
 
     private void reconnectSucceeded() {
         reconnectAttempts.set(0);
+        serverRefused.set(false);
         onReconnected();
+    }
+
+    /**
+     * Records whether a failure was the server turning us away, so the next
+     * reconnect waits properly instead of knocking again immediately.
+     */
+    private void noteRefusal(Throwable error) {
+        for (Throwable t = error; t != null; t = t.getCause()) {
+            if (t instanceof ServerRefusedException) {
+                serverRefused.set(true);
+                return;
+            }
+        }
     }
 
     /**

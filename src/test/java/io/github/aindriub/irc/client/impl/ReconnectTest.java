@@ -448,6 +448,40 @@ public class ReconnectTest {
         }
     }
 
+    @Test
+    public void waitsLongerAfterTheServerRefusesThanAfterADrop() throws Exception {
+        // The backoff starts at 50ms and tops out at 2s, so the two cases are
+        // far enough apart to tell one from the other without a tight race.
+        client = new BasicIRCClient(new ClientConfigurationBuilder()
+                .host("127.0.0.1")
+                .port(server.getPort())
+                .secure(false)
+                .nick("bot")
+                .reconnect(true)
+                .reconnectBackoff(50, 2000, 0)
+                .registrationTimeout(3000)
+                .build());
+        client.connect();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        // From here the server turns every connection away, the way one
+        // throttling reconnects does.
+        server.throttle(true);
+        server.dropConnection();
+
+        // The first retry is on the short backoff and gets refused.
+        long start = System.currentTimeMillis();
+        waitForConnections(2, TIMEOUT);
+        assertTrue("expected a prompt retry after an ordinary drop",
+                System.currentTimeMillis() - start < 1500);
+
+        // The next one must not be on the short backoff: knocking again
+        // immediately is what keeps a throttle alive.
+        Thread.sleep(900);
+        assertEquals("a refusal should not be retried within a second",
+                2, server.getConnectionCount());
+    }
+
     private BasicIRCClient client(boolean reconnect) {
         return new BasicIRCClient(new ClientConfigurationBuilder()
                 .host("127.0.0.1")
