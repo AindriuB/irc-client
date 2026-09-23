@@ -284,9 +284,23 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        registered.completeExceptionally(
-                new IRCClientException("Registration failed", cause));
+        registered.completeExceptionally(new IRCClientException(describe(cause), cause));
         ctx.fireExceptionCaught(cause);
+    }
+
+    /**
+     * What to call the failure. A TLS handshake that failed because the server
+     * answered in plain text carries the reason in those bytes, and reporting the
+     * hex dump Netty produced hides the one sentence that explains everything.
+     */
+    private static String describe(Throwable cause) {
+        String reply = PlaintextReply.from(cause);
+        if (reply == null) {
+            return "Registration failed";
+        }
+        return "Registration failed: the server answered in plain text rather than "
+                + "starting TLS, saying \"" + reply + "\". Either it refused the "
+                + "connection before TLS began, or this is not a TLS port.";
     }
 
     /**
