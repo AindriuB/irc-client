@@ -300,6 +300,53 @@ public class RegistrationHandlerTest {
         return configuration;
     }
 
+    @Test
+    public void anErrorDuringRegistrationIsARefusalWithTheServersWords() throws Exception {
+        EmbeddedChannel channel = connect(config("bot", null));
+        drain(channel);
+
+        // What EFnet sends on a plaintext port when it has decided against you.
+        channel.writeInbound("ERROR :Closing Link: throttled\r\n");
+
+        assertFailedWith("throttled");
+
+        ServerRefusedException refusal = refusal();
+        assertEquals("Closing Link: throttled", refusal.getReply());
+        assertFalse("the server hung up, so the channel should be closed",
+                channel.isOpen());
+    }
+
+    @Test
+    public void aRefusalIsDistinguishableFromAnOrdinaryFailure() throws Exception {
+        EmbeddedChannel channel = connect(config("bot", null));
+        drain(channel);
+
+        // A nick collision is a failure, but not the server refusing to have us:
+        // retrying shortly is reasonable, so it must not read as a refusal.
+        channel.writeInbound(":server 464 bot :Password incorrect\r\n");
+
+        assertTrue(registered.isCompletedExceptionally());
+        try {
+            registered.get();
+            fail("expected an exception");
+        } catch (ExecutionException e) {
+            assertFalse("a bad password is not a refusal to accept connections",
+                    e.getCause() instanceof ServerRefusedException);
+        }
+    }
+
+    private ServerRefusedException refusal() throws Exception {
+        try {
+            registered.get();
+            fail("expected an exception");
+            return null;
+        } catch (ExecutionException e) {
+            assertTrue("expected a refusal, got " + e.getCause(),
+                    e.getCause() instanceof ServerRefusedException);
+            return (ServerRefusedException) e.getCause();
+        }
+    }
+
     private EmbeddedChannel connect(RegistrationConfiguration configuration) {
         // Constructing with the handler fires channelActive, as a real connect does.
         return new EmbeddedChannel(new RegistrationHandler(configuration, registered));

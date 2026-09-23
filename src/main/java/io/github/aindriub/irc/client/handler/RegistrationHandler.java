@@ -41,6 +41,7 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
 
     private static final String CAP = "CAP";
     private static final String AUTHENTICATE = "AUTHENTICATE";
+    private static final String ERROR = "ERROR";
     private static final String SASL = "sasl";
     private static final String PLAIN = "PLAIN";
 
@@ -116,6 +117,14 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
             // carry on unauthenticated from.
             saslInProgress = false;
             fail(ctx, "SASL authentication failed: " + message);
+            return;
+        }
+        if (ERROR.equals(command)) {
+            // A server that has decided against us says so and hangs up. Naming it
+            // a refusal rather than a generic failure is what lets the reconnect
+            // logic wait properly instead of knocking again in a second.
+            String reply = message.hasTrailing() ? message.getTrailing() : message.toString();
+            refuse(ctx, "The server refused the connection, saying \"" + reply + "\"", reply);
             return;
         }
         if (Numerics.RPL_WELCOME.equals(command)) {
@@ -268,6 +277,12 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
         ctx.pipeline().remove(this);
     }
 
+    private void refuse(ChannelHandlerContext ctx, String reason, String reply) {
+        LOGGER.error(reason);
+        registered.completeExceptionally(new ServerRefusedException(reason, reply));
+        ctx.close();
+    }
+
     private void fail(ChannelHandlerContext ctx, String reason) {
         LOGGER.error(reason);
         registered.completeExceptionally(new IRCClientException(reason));
@@ -284,7 +299,10 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-        registered.completeExceptionally(new IRCClientException(describe(cause), cause));
+        String reply = PlaintextReply.from(cause);
+        registered.completeExceptionally(reply == null
+                ? new IRCClientException("Registration failed", cause)
+                : new ServerRefusedException(describe(reply), reply, cause));
         ctx.fireExceptionCaught(cause);
     }
 
@@ -293,11 +311,7 @@ public class RegistrationHandler extends SimpleChannelInboundHandler<String> {
      * answered in plain text carries the reason in those bytes, and reporting the
      * hex dump Netty produced hides the one sentence that explains everything.
      */
-    private static String describe(Throwable cause) {
-        String reply = PlaintextReply.from(cause);
-        if (reply == null) {
-            return "Registration failed";
-        }
+    private static String describe(String reply) {
         return "Registration failed: the server answered in plain text rather than "
                 + "starting TLS, saying \"" + reply + "\". Either it refused the "
                 + "connection before TLS began, or this is not a TLS port.";
