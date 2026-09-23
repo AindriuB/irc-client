@@ -62,7 +62,7 @@ level use, drive `BasicIRCClient` directly as below.
 <dependency>
     <groupId>io.github.aindriub</groupId>
     <artifactId>irc-client</artifactId>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
