@@ -20,4 +20,5 @@ no row is one `planner` cannot find, and will re-plan.
 
 | Date | Task IDs | Summary | Heading (grep this exact string) |
 |---|---|---|---|
+| 2026-09-24 | 04, 05 | BasicIRCClient drops kicked channels; bot CTCP responder merged to master (bot-facade pass wave 2) | ## 2026-09-24 — BasicIRCClient drops kicked channels, and the bot CTCP responder lands |
 | 2026-09-24 | 01, 02, 03 | CaseMapping, IRCFormatting.strip, Ctcp codec merged to master (bot-facade pass wave 1) | ## 2026-09-24 — CaseMapping, IRCFormatting.strip and the Ctcp codec land |

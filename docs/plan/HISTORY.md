@@ -17,6 +17,30 @@ in the same commit.
 **Cost:** <what was hard, what was tried and abandoned, what not to retry.>
 -->
 
+## 2026-09-24 — BasicIRCClient drops kicked channels, and the bot CTCP responder lands
+Wave 2 of the 1.2.0 bot-facade pass. `BasicIRCClient` now tracks its own nick
+(via RPL_WELCOME and NICK) and the server's `CASEMAPPING` (via ISUPPORT,
+including `-CASEMAPPING` negation) through an always-present pipeline
+handler, exposed as `getCaseMapping()`. An inbound KICK of self drops the
+channel from the joined set, so a reconnect no longer rejoins it; outbound
+KICK never touches that set. Joined channels fold under the current mapping,
+keeping the latest spelling and key. `MessageContext` gains `isCtcp`,
+`getCtcpCommand`, `getCtcpArgument` and `getPlainText`; `IRCBot` gains
+`action()`; `IRCBotBuilder.respondToCtcp(boolean)` (default off) turns on an
+automatic VERSION/PING/TIME responder that replies by NOTICE only, skips
+server-prefixed CTCP probes (null sender), and drops a reply that would not
+fit on one line rather than splitting it.
+**Cost:** Both branches needed a second attempt. 04: per-connection state
+(self nick, CASEMAPPING token) survived a reconnect and was folded against
+before the new ISUPPORT arrived, and JOIN keys were not folded so
+`JOIN #A` then `JOIN #a` produced two entries instead of one — both are now
+reset/folded per connection. 05: a server's CTCP VERSION probe on connect
+has a server prefix, so `sender` is null; the first attempt let that null
+propagate into `notice()`, which threw and skipped `dispatchCommand` and
+every `onMessage` listener for the whole message. The responder now returns
+early on a null sender and wraps its own reply in a try/catch that logs at
+WARN instead of escaping into the pipeline.
+
 ## 2026-09-24 — CaseMapping, IRCFormatting.strip and the Ctcp codec land
 Wave 1 of the 1.2.0 bot-facade pass. `CaseMapping` (ASCII, RFC1459,
 STRICT_RFC1459) and `ServerSupport.getCaseMapping()` read the server's

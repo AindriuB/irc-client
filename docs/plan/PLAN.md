@@ -38,10 +38,14 @@ text should not leak into MessageContext as raw control bytes, and a bot
 should be able to tell it is reconnecting rather than silently retrying
 forever. Landed so far: `CaseMapping` and `ServerSupport.getCaseMapping()`
 (task 01), `IRCFormatting.strip()` (task 02), the package-private `Ctcp`
-codec (task 03). In flight: BasicIRCClient drops a channel on KICK (04),
-CTCP/plain text on the bot facade (05), `onKick`/auto-rejoin/CASEMAPPING-aware
-self checks on the bot (06), and connection-state events — DISCONNECTED /
-RECONNECTING / RECONNECTED / GAVE_UP — on `BotListener` (07).
+codec (task 03), `BasicIRCClient` dropping a channel on self-KICK plus its
+own nick/CASEMAPPING tracking (task 04), and the CTCP/formatting facade on
+`IRCBot` — `MessageContext` CTCP accessors, `action()`, and the opt-in
+VERSION/PING/TIME responder (task 05). Open: `onKick`/auto-rejoin/
+CASEMAPPING-aware self checks on the bot (06), and connection-state events —
+DISCONNECTED / RECONNECTING / RECONNECTED / GAVE_UP — on `BotListener` (07,
+which also now owns logging a refused write in `AbstractClient.send`, found
+in review of 05).
 
 ## Someday
 

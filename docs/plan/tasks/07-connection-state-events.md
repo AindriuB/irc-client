@@ -52,3 +52,6 @@ owns BasicIRCClient and ReconnectTest).
 - Changing backoff, `maxAttempts` defaults, or the refused-server delay policy (#40)
 - A `getConnectionState()` polling API, or reporting deliberate disconnects as events
 - The initial `connect()` failing (it already throws to the caller)
+
+## Added from review of 05
+AbstractClient.send (~:284-287) drops a write that OutboundRateLimiter refuses (OutboundQueueFullException fails the promise) with no listener and no log. That breaks the "no silent catch" rule, and the CTCP responder is the first automatic caller to hit it. While you own AbstractClient, add a failure listener that logs refused writes at WARN, rate-limited or at least without the payload. Do not change behaviour otherwise. Test it.
