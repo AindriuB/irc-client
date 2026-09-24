@@ -17,6 +17,30 @@ in the same commit.
 **Cost:** <what was hard, what was tried and abandoned, what not to retry.>
 -->
 
+## 2026-09-24 — Fixed the ReconnectTest flake that blocked the 1.2.1 dry run
+
+One-off test fix, no task file, merged to master. The 1.2.1 release dry
+run failed on GitHub Actions (run 36043544364) in
+`ReconnectTest.reconnectsWithoutRegistrationWhenNoNickIsSet`. A
+systematic debugging pass (reproduced 5/30 under 8 busy loops pinned to
+one CPU) found the cause: `StubIRCServer.connect()` returns once the
+client's TCP handshake completes, which can happen before the stub's
+accept thread has recorded the socket. This test is the only one in the
+file that calls `dropConnection()` without first `awaitLine()`-ing a
+handshake line, because it configures no nick. Under contention,
+`dropConnection()` found no socket yet and silently did nothing, so no
+reconnect ever fired and the test saw 1 connection instead of 2. Fix:
+`waitForConnections(1)` before the drop, 8 lines in `ReconnectTest.java`
+only. Passed 30/30 under the same load afterward. Test-only;
+`AbstractClient` is unchanged, not a production bug. `mvn verify` passed
+clean on merged master.
+
+**Cost:** this exact test had flaked intermittently for the whole 1.2.x
+cycle and was dismissed as environmental more than once without a root
+cause. It only got a real debugging pass once it actually blocked a
+release. Lesson: a flake that survives two "it's just load" dismissals
+gets a debugging pass, not another rerun.
+
 ## 2026-09-24 — Credentials validate at configuration time, closing the 1.2.1 security patch
 
 Task 02 of the 1.2.1 security patch, merged to master. This was the last

@@ -29,6 +29,15 @@ because it is a credential leak, not a feature. Nothing is blocking the
 cut. Steps in `RELEASING.md`. When it is cut, also move the README
 dependency snippet from `1.2.0` to `1.2.1`.
 
+The release dry run (GitHub Actions run 36043544364) failed on a
+`ReconnectTest` flake unrelated to the security fix itself; that is now
+fixed on master (see HISTORY, task 99) and the dry run is unblocked.
+
+**Release constraint:** irc-client has one Central release left in its
+September 2026 publishing allowance — the dropped 1.2.0 upload already
+counted against it. 1.2.1 must be right first time; there is no retry
+this month if the upload needs withdrawing or redoing.
+
 **Release notes draft** (for the maintainer to paste into the 1.2.1
 release):
 

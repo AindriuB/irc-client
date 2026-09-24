@@ -20,6 +20,7 @@ no row is one `planner` cannot find, and will re-plan.
 
 | Date | Task IDs | Summary | Heading (grep this exact string) |
 |---|---|---|---|
+| 2026-09-24 | 99 | Fixed ReconnectTest's no-nick-set flake (StubIRCServer accept-thread race) that had failed the 1.2.1 release dry run; test-only, unblocks the cut | ## 2026-09-24 — Fixed the ReconnectTest flake that blocked the 1.2.1 dry run |
 | 2026-09-24 | 02 | 1.2.1 security patch complete, ready to cut: credential validation moved to configuration time (builder setters), a log-capture test proves a registration-time failure never logs the secret, Join.toString redacts channel keys | ## 2026-09-24 — Credentials validate at configuration time, closing the 1.2.1 security patch |
 | 2026-09-24 | 01 | 1.2.1 security patch: IRCText validators and AbstractClient.send no longer put rejected values in exception messages; fixes a Twitch OAuth password logged at ERROR in production | ## 2026-09-24 — IRCText and AbstractClient.send stop echoing rejected values |
 | 2026-09-24 | 07 | Connection-state events (DISCONNECTED/RECONNECTING/RECONNECTED/GAVE_UP) on BotListener merged to master, closing the bot-facade pass; 1.2.0 ready to cut | ## 2026-09-24 — Connection-state events land, closing the 1.2.0 bot-facade pass |
