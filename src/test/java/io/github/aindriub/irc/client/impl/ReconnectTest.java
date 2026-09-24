@@ -335,6 +335,14 @@ public class ReconnectTest {
         assertTrue(client.isConnected());
         assertFalse("no nick means no handshake to complete", client.isRegistered());
 
+        // With no nick there is no handshake line to awaitLine() on, unlike every
+        // other dropConnection() call in this file. Without that, dropConnection()
+        // can race the stub's own accept loop: the client's connect() returns as
+        // soon as its side of the TCP handshake is done, which can happen before
+        // the server's accept thread has been scheduled to record the socket. A
+        // drop that lands in that window finds no socket to close and is a silent
+        // no-op, so wait for the server to have actually seen the connection first.
+        waitForConnections(1, TIMEOUT);
         server.dropConnection();
 
         waitForConnections(2, TIMEOUT);
