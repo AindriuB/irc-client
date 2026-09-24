@@ -81,4 +81,71 @@ public class CtcpTest {
     public void buildsPayloadWithoutArgument() {
         assertEquals("\u0001VERSION\u0001", Ctcp.build("VERSION", null));
     }
+
+    @Test
+    public void argumentStopsAtFirstEmbeddedDelimiter() {
+        String text = "\u0001PING a\u0001VERSION\u0001";
+        assertEquals("PING", Ctcp.command(text));
+        assertEquals("a", Ctcp.argument(text));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildRejectsNullCommand() {
+        Ctcp.build(null, null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildRejectsEmptyCommand() {
+        Ctcp.build("", null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildRejectsCommandWithSpace() {
+        Ctcp.build("BAD COMMAND", null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildRejectsCommandWithDelimiter() {
+        Ctcp.build("ACTION\u0001VERSION", null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildRejectsCommandWithCr() {
+        Ctcp.build("ACTION\r", null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildRejectsCommandWithLf() {
+        Ctcp.build("ACTION\n", null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildRejectsCommandWithNul() {
+        Ctcp.build("ACTION\u0000", null);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildRejectsArgumentWithEmbeddedDelimiter() {
+        Ctcp.build("ACTION", "hi\u0001VERSION");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildRejectsArgumentWithCr() {
+        Ctcp.build("ACTION", "hi\r");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildRejectsArgumentWithLf() {
+        Ctcp.build("ACTION", "hi\n");
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void buildRejectsArgumentWithNul() {
+        Ctcp.build("ACTION", "hi\u0000");
+    }
+
+    @Test
+    public void buildAllowsArgumentWithSpace() {
+        assertEquals("\u0001ACTION waves at you\u0001", Ctcp.build("ACTION", "waves at you"));
+    }
 }
