@@ -279,7 +279,7 @@ public class ChannelStateTrackerTest {
     }
 
     @Test
-    public void rfc1459CaseMappingFoldsBracketsForNickMatching() {
+    public void rfc1459CaseMappingFoldsBracketsForPartMatching() {
         feed(":server 005 bot CASEMAPPING=rfc1459 :are supported");
         feed(":server 353 bot = #chan :nick{1}");
 
@@ -287,6 +287,28 @@ public class ChannelStateTrackerTest {
 
         assertFalse("Nick[1] should have matched nick{1}",
                 tracker.getChannel("#chan").contains("nick{1}"));
+    }
+
+    @Test
+    public void rfc1459CaseMappingFoldsBracketsForKickMatching() {
+        feed(":server 005 bot CASEMAPPING=rfc1459 :are supported");
+        feed(":server 353 bot = #chan :nick{1}");
+
+        feed(":op!u@h KICK #chan Nick[1]");
+
+        assertFalse("Nick[1] should have matched nick{1}",
+                tracker.getChannel("#chan").contains("nick{1}"));
+    }
+
+    @Test
+    public void rfc1459CaseMappingFoldsBracketsForJoinMatching() {
+        feed(":server 005 bot CASEMAPPING=rfc1459 :are supported");
+        feed(":server 353 bot = #chan :nick{1}");
+
+        feed(":Nick[1]!u@h JOIN #chan");
+
+        assertEquals("Nick[1] should have replaced nick{1} rather than joining anew",
+                1, tracker.getChannel("#chan").size());
     }
 
     @Test
@@ -299,7 +321,7 @@ public class ChannelStateTrackerTest {
     }
 
     @Test
-    public void asciiCaseMappingDoesNotFoldBracketsForNicks() {
+    public void asciiCaseMappingDoesNotFoldBracketsForPart() {
         feed(":server 005 bot CASEMAPPING=ascii :are supported");
         feed(":server 353 bot = #chan :nick{1}");
 
@@ -307,6 +329,28 @@ public class ChannelStateTrackerTest {
 
         assertTrue("Nick[1] and nick{1} are different nicks under ascii",
                 tracker.getChannel("#chan").contains("nick{1}"));
+    }
+
+    @Test
+    public void asciiCaseMappingDoesNotFoldBracketsForKick() {
+        feed(":server 005 bot CASEMAPPING=ascii :are supported");
+        feed(":server 353 bot = #chan :nick{1}");
+
+        feed(":op!u@h KICK #chan Nick[1]");
+
+        assertTrue("Nick[1] and nick{1} are different nicks under ascii",
+                tracker.getChannel("#chan").contains("nick{1}"));
+    }
+
+    @Test
+    public void asciiCaseMappingDoesNotFoldBracketsForJoin() {
+        feed(":server 005 bot CASEMAPPING=ascii :are supported");
+        feed(":server 353 bot = #chan :nick{1}");
+
+        feed(":Nick[1]!u@h JOIN #chan");
+
+        assertEquals("Nick[1] and nick{1} are distinct users under ascii",
+                2, tracker.getChannel("#chan").size());
     }
 
     @Test
