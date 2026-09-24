@@ -17,6 +17,23 @@ in the same commit.
 **Cost:** <what was hard, what was tried and abandoned, what not to retry.>
 -->
 
+## 2026-09-24 — IRCBot reports kicks and can auto-rejoin
+Wave 3 of the 1.2.0 bot-facade pass. `BotListener` gains
+`onKick(bot, channel, kicked, by, reason)`, a default no-op dispatched
+through `safely` for every KICK, null-safe for a server-issued `by`.
+`IRCBotBuilder.autoRejoinAfterKick(boolean)` (default off) sends one JOIN
+per self-KICK and never retries on 474; the rejoin lands after
+`BasicIRCClient`'s own kick handler has already dropped the channel from
+its joined set, so the rejoined channel stays tracked. It does not reuse a
+channel key. `isFromSelf` and the self-KICK check now go through
+`client.getCaseMapping()` instead of a plain string comparison. Only
+connection-state events (task 07) remain before 1.2.0 can be cut.
+**Cost:** first pass of the tests used fixed sleeps as synchronisation,
+against `conventions.md`; review sent it back and the fix added a marker/
+condition-wait test for KICK → auto-rejoin → reconnect instead. The file's
+16 older fixed sleeps predate this task and are unchanged; that cleanup is
+now a separate PLAN item rather than folded into 06's scope.
+
 ## 2026-09-24 — BasicIRCClient drops kicked channels, and the bot CTCP responder lands
 Wave 2 of the 1.2.0 bot-facade pass. `BasicIRCClient` now tracks its own nick
 (via RPL_WELCOME and NICK) and the server's `CASEMAPPING` (via ISUPPORT,

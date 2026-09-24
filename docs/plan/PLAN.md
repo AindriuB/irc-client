@@ -39,13 +39,29 @@ should be able to tell it is reconnecting rather than silently retrying
 forever. Landed so far: `CaseMapping` and `ServerSupport.getCaseMapping()`
 (task 01), `IRCFormatting.strip()` (task 02), the package-private `Ctcp`
 codec (task 03), `BasicIRCClient` dropping a channel on self-KICK plus its
-own nick/CASEMAPPING tracking (task 04), and the CTCP/formatting facade on
+own nick/CASEMAPPING tracking (task 04), the CTCP/formatting facade on
 `IRCBot` — `MessageContext` CTCP accessors, `action()`, and the opt-in
-VERSION/PING/TIME responder (task 05). Open: `onKick`/auto-rejoin/
-CASEMAPPING-aware self checks on the bot (06), and connection-state events —
-DISCONNECTED / RECONNECTING / RECONNECTED / GAVE_UP — on `BotListener` (07,
-which also now owns logging a refused write in `AbstractClient.send`, found
-in review of 05).
+VERSION/PING/TIME responder (task 05), and `BotListener.onKick` plus opt-in
+auto-rejoin-after-kick and CASEMAPPING-aware self checks on the bot (task 06).
+Only connection-state events — DISCONNECTED / RECONNECTING / RECONNECTED /
+GAVE_UP — on `BotListener` remain (07, which also now owns logging a refused
+write in `AbstractClient.send`, found in review of 05). 1.2.0 can be cut once
+07 lands.
+
+## Next
+
+### Drop a JOIN-refused channel from BasicIRCClient's joined set
+Found in review of 06. A channel whose JOIN the server refuses (471 full, 473
+invite-only, 474 banned, 475 bad key) stays in `BasicIRCClient`'s joined set,
+so every reconnect retries it once. Candidate fix: drop the channel on those
+numerics.
+
+### Replace IRCBotTest's older fixed sleeps with condition waits
+`src/test/java/io/github/aindriub/irc/client/bot/IRCBotTest.java` has 16
+older fixed `Thread.sleep(150-300)` waits, predating task 06, against
+`conventions.md`'s "no sleeps as synchronisation. Wait on a condition or a
+future." Task 06 already replaced its own tests' sleeps with marker or
+condition waits; do the same for the rest of the file.
 
 ## Someday
 
