@@ -270,6 +270,46 @@ public class ChannelStateTrackerTest {
     }
 
     @Test
+    public void rfc1459CaseMappingFoldsBracketsForChannelLookup() {
+        feed(":server 005 bot CASEMAPPING=rfc1459 :are supported");
+        feed(":server 353 bot = #FOO{} :nick{1}");
+
+        assertEquals("#FOO{} folds to the same key as #foo[]",
+                "#FOO{}", tracker.getChannel("#foo[]").getName());
+    }
+
+    @Test
+    public void rfc1459CaseMappingFoldsBracketsForNickMatching() {
+        feed(":server 005 bot CASEMAPPING=rfc1459 :are supported");
+        feed(":server 353 bot = #chan :nick{1}");
+
+        feed(":Nick[1]!u@h PART #chan");
+
+        assertFalse("Nick[1] should have matched nick{1}",
+                tracker.getChannel("#chan").contains("nick{1}"));
+    }
+
+    @Test
+    public void asciiCaseMappingDoesNotFoldBrackets() {
+        feed(":server 005 bot CASEMAPPING=ascii :are supported");
+        feed(":server 353 bot = #FOO{} :nick{1}");
+
+        assertNull("#FOO{} and #foo[] are different channels under ascii",
+                tracker.getChannel("#foo[]"));
+    }
+
+    @Test
+    public void asciiCaseMappingDoesNotFoldBracketsForNicks() {
+        feed(":server 005 bot CASEMAPPING=ascii :are supported");
+        feed(":server 353 bot = #chan :nick{1}");
+
+        feed(":Nick[1]!u@h PART #chan");
+
+        assertTrue("Nick[1] and nick{1} are different nicks under ascii",
+                tracker.getChannel("#chan").contains("nick{1}"));
+    }
+
+    @Test
     public void reportsTheChannelsItKnowsAbout() {
         feed(":server 353 bot = #one :alice");
         feed(":server 353 bot = #two :alice");

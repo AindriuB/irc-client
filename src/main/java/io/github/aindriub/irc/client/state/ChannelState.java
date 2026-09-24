@@ -4,26 +4,27 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
  * What is known about one channel: who is in it, what status they hold, and the
  * topic.
  *
- * <p>Nicks are compared case insensitively, because IRC treats them that way and a
- * server will happily send {@code Someone} in a NAMES reply and {@code someone} in
- * the PART that follows.
+ * <p>Nicks are compared under the server's {@link CaseMapping}, because IRC treats
+ * them that way and a server will happily send {@code Someone} in a NAMES reply and
+ * {@code someone} in the PART that follows.
  */
 public final class ChannelState {
 
     private final String name;
+    private final CaseMapping caseMapping;
     private final Map<String, ChannelUser> users = new LinkedHashMap<>();
 
     private String topic;
 
-    ChannelState(String name) {
+    ChannelState(String name, CaseMapping caseMapping) {
         this.name = name;
+        this.caseMapping = caseMapping;
     }
 
     public String getName() {
@@ -111,8 +112,8 @@ public final class ChannelState {
         users.put(key(nick), adding ? user.withStatus(status) : user.withoutStatus(status));
     }
 
-    private static String key(String nick) {
-        return nick.toLowerCase(Locale.ROOT);
+    private String key(String nick) {
+        return caseMapping.fold(nick);
     }
 
     @Override

@@ -7,6 +7,11 @@ import java.util.Set;
 
 /**
  * One person in a channel, and what status they hold there.
+ *
+ * <p>{@link #equals(Object)} and {@link #hashCode()} compare nicks ASCII-case-
+ * insensitively, regardless of the server's {@link CaseMapping}: this class is not
+ * how {@link ChannelState} looks users up (that uses the server's mapping), it is
+ * just a value the caller may want to compare or put in a set.
  */
 public final class ChannelUser {
 
