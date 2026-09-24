@@ -17,6 +17,28 @@ in the same commit.
 **Cost:** <what was hard, what was tried and abandoned, what not to retry.>
 -->
 
+## 2026-09-24 — IRCText and AbstractClient.send stop echoing rejected values
+
+Task 01 of the 1.2.1 security patch, merged to master. IRCText's
+validators (used by `Pass`, `Authenticate`, and everything else that
+validates an IRC parameter) no longer put the rejected value into an
+`IllegalArgumentException` message; they now give the parameter name,
+its index and length, or a `U+XXXX` code point for CR/LF/NUL.
+`AbstractClient.send`'s failure messages report the payload's length
+instead of the payload itself. No public or protected signature changed
+versus 1.2.0. Found in production: a user's Twitch OAuth password was
+saved as the whole line `PASS oauth:…`; the whitespace check put the
+full token into an exception message, and irc-web logged it at ERROR
+once a minute for hours (irc-web was orphaning a failed bot and
+retrying it in a loop, fixed separately in irc-web). The library's
+debug logs already masked passwords, so this was a leak specific to the
+validation-exception path.
+
+**Cost:** the same sweep found `Join.toString()` exposes channel keys
+(the library's own logging only calls `getChannels`, but any caller
+that logs a keyed `Join` logs the key). Folded into task 02 rather than
+fixed here, since it touches a different file and test than task 01 owns.
+
 ## 2026-09-24 — Connection-state events land, closing the 1.2.0 bot-facade pass
 Wave 4, the last of the pass. `ConnectionEvent` (DISCONNECTED / RECONNECTING /
 RECONNECTED / GAVE_UP, with attempt/delay accessors) reaches bot code through

@@ -11,6 +11,37 @@ than no plan.
 
 ## Now
 
+### 1.2.1 security patch
+`master` sits at `1.2.1-SNAPSHOT`. Task 01 landed: IRCText's validators
+(and AbstractClient.send's failure messages) no longer put the rejected
+value into an exception message — in production a Twitch OAuth password
+saved as the whole `PASS oauth:…` line was logged at ERROR once a minute
+for hours, because the whitespace check put the full token into the
+message. This ships as a patch rather than waiting for the next batch
+release because it is a credential leak, not a feature; every day it sits
+in a SNAPSHOT is a day irc-web (and anyone else on 1.2.0) keeps logging
+secrets on this path. Task 02 is open and depends on 01: validate
+credentials at configuration time (so a bad secret fails once, at the
+builder, instead of forever on every reconnect) and prove with a
+log-capture test that a registration-time failure never writes the secret
+to any log; it also redacts `Join.toString()`'s channel keys, found in
+review of 01.
+
+**Release notes draft** (for the maintainer to paste into the 1.2.1
+release, once task 02 lands):
+
+- Security fix: exceptions from `IRCText` validation and from
+  `AbstractClient.send` failures no longer include the rejected value
+  (password, SASL credential, or other caller-supplied text) — only its
+  length, index of the problem, or the offending code point. If you log
+  exception messages, secrets that used to appear there no longer will.
+- `ClientConfigurationBuilder.password`/`sasl` and `IRCBotBuilder.password`
+  now validate at configuration time, matching the rules `PASS`/
+  `AUTHENTICATE` already enforced, so a bad credential throws once instead
+  of failing silently on every reconnect.
+- `Join.toString()` no longer exposes channel keys.
+- No public API change versus 1.2.0.
+
 ### Accumulate 1.2.0 — batch complete, ready to cut
 Releases are batched rather than cut per change. A release cannot be withdrawn
 or replaced, every one spends part of a monthly publishing allowance, and each
