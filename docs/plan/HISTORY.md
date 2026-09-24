@@ -17,6 +17,33 @@ in the same commit.
 **Cost:** <what was hard, what was tried and abandoned, what not to retry.>
 -->
 
+## 2026-09-24 — Credentials validate at configuration time, closing the 1.2.1 security patch
+
+Task 02 of the 1.2.1 security patch, merged to master. This was the last
+task; the patch is now complete and ready to cut. `ClientConfigurationBuilder.password`
+and `.sasl(username, password)`, and `IRCBotBuilder.password`, now check
+values when they are set, using the same rules the `PASS`/`AUTHENTICATE`
+commands already enforced: server password and SASL username go through
+`requireParam` (no whitespace, no leading `:`, no CR/LF/NUL); SASL
+password goes through `requireText` (spaces allowed). A bad value throws
+`IllegalArgumentException`, without echoing it, once at configuration
+time — previously it built fine and then failed inside
+`RegistrationHandler.channelActive` on every reconnect, forever. `null`
+still clears a password. `RegistrationSecretLogTest` attaches a logger
+capture at TRACE across every logger and proves a registration-time
+credential failure never writes the secret to any log. `Join.toString()`
+now redacts channel keys (found in review of task 01; `render()` still
+sends them). Javadoc notes that `RegistrationConfiguration`'s own setters
+stay deliberately permissive, and that debug logging hex-dumps raw wire
+bytes including `PASS` and `AUTHENTICATE` — pre-existing, opt-in, now
+documented. No public signature changed versus 1.2.0.
+
+**Cost:** debug mode's Netty `LoggingHandler` hex-dumps the `PASS` line.
+That behaviour predates this task, is opt-in, and was left alone —
+documented rather than changed, since disabling it would remove a
+debugging tool over a leak that only fires when a user deliberately turns
+debug logging on.
+
 ## 2026-09-24 — IRCText and AbstractClient.send stop echoing rejected values
 
 Task 01 of the 1.2.1 security patch, merged to master. IRCText's

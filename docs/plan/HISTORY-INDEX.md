@@ -20,6 +20,7 @@ no row is one `planner` cannot find, and will re-plan.
 
 | Date | Task IDs | Summary | Heading (grep this exact string) |
 |---|---|---|---|
+| 2026-09-24 | 02 | 1.2.1 security patch complete, ready to cut: credential validation moved to configuration time (builder setters), a log-capture test proves a registration-time failure never logs the secret, Join.toString redacts channel keys | ## 2026-09-24 — Credentials validate at configuration time, closing the 1.2.1 security patch |
 | 2026-09-24 | 01 | 1.2.1 security patch: IRCText validators and AbstractClient.send no longer put rejected values in exception messages; fixes a Twitch OAuth password logged at ERROR in production | ## 2026-09-24 — IRCText and AbstractClient.send stop echoing rejected values |
 | 2026-09-24 | 07 | Connection-state events (DISCONNECTED/RECONNECTING/RECONNECTED/GAVE_UP) on BotListener merged to master, closing the bot-facade pass; 1.2.0 ready to cut | ## 2026-09-24 — Connection-state events land, closing the 1.2.0 bot-facade pass |
 | 2026-09-24 | 06 | BotListener.onKick and opt-in auto-rejoin-after-kick merged to master (bot-facade pass wave 3) | ## 2026-09-24 — IRCBot reports kicks and can auto-rejoin |

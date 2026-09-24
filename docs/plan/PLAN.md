@@ -11,24 +11,26 @@ than no plan.
 
 ## Now
 
-### 1.2.1 security patch
-`master` sits at `1.2.1-SNAPSHOT`. Task 01 landed: IRCText's validators
-(and AbstractClient.send's failure messages) no longer put the rejected
-value into an exception message — in production a Twitch OAuth password
-saved as the whole `PASS oauth:…` line was logged at ERROR once a minute
-for hours, because the whitespace check put the full token into the
-message. This ships as a patch rather than waiting for the next batch
-release because it is a credential leak, not a feature; every day it sits
-in a SNAPSHOT is a day irc-web (and anyone else on 1.2.0) keeps logging
-secrets on this path. Task 02 is open and depends on 01: validate
-credentials at configuration time (so a bad secret fails once, at the
-builder, instead of forever on every reconnect) and prove with a
-log-capture test that a registration-time failure never writes the secret
-to any log; it also redacts `Join.toString()`'s channel keys, found in
-review of 01.
+### 1.2.1 security patch — complete, ready to cut
+`master` sits at `1.2.1-SNAPSHOT`. Both tasks landed. Task 01: IRCText's
+validators (and AbstractClient.send's failure messages) no longer put the
+rejected value into an exception message — in production a Twitch OAuth
+password saved as the whole `PASS oauth:…` line was logged at ERROR once
+a minute for hours, because the whitespace check put the full token into
+the message. Task 02: `ClientConfigurationBuilder.password`/`sasl` and
+`IRCBotBuilder.password` now validate at configuration time, matching the
+rules `PASS`/`AUTHENTICATE` already enforced, so a bad credential throws
+once instead of failing silently on every reconnect; a log-capture test
+(`RegistrationSecretLogTest`) proves a registration-time credential
+failure never writes the secret to any log at TRACE; and
+`Join.toString()` no longer exposes channel keys (found in review of 01).
+This shipped as a patch rather than waiting for the next batch release
+because it is a credential leak, not a feature. Nothing is blocking the
+cut. Steps in `RELEASING.md`. When it is cut, also move the README
+dependency snippet from `1.2.0` to `1.2.1`.
 
 **Release notes draft** (for the maintainer to paste into the 1.2.1
-release, once task 02 lands):
+release):
 
 - Security fix: exceptions from `IRCText` validation and from
   `AbstractClient.send` failures no longer include the rejected value
