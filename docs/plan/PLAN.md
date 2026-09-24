@@ -11,42 +11,55 @@ than no plan.
 
 ## Now
 
-### Accumulate 1.2.0
+### Accumulate 1.2.0 — batch complete, ready to cut
 Releases are batched rather than cut per change. A release cannot be withdrawn
 or replaced, every one spends part of a monthly publishing allowance, and each
 one obliges anyone downstream to decide whether to take it. `master` sits at
-`1.2.0-SNAPSHOT` until there is a batch worth shipping.
+`1.2.0-SNAPSHOT`; the batch below is everything waiting to go out, and nothing
+is blocking it — it can be cut whenever the maintainer decides to. Steps in
+`RELEASING.md`.
 
-Waiting to go out:
+On `master`:
 
 - **#39** — quote what the server said when TLS never started
 - **#40** — stop the reconnect loop from holding a throttle open, and
-  `ServerRefusedException` with it
+  `ServerRefusedException` with it (new public API)
+- **Bot-facade pass**, tasks 01–07: `CaseMapping` and
+  `ServerSupport.getCaseMapping()` (01); `IRCFormatting.strip()` (02); the
+  package-private `Ctcp` codec (03); `BasicIRCClient` dropping a channel on
+  self-KICK plus its own nick/CASEMAPPING tracking (04); the CTCP/formatting
+  facade on `IRCBot` — `MessageContext` CTCP accessors, `action()`, and the
+  opt-in VERSION/PING/TIME responder (05); `BotListener.onKick` plus opt-in
+  auto-rejoin-after-kick and CASEMAPPING-aware self checks (06); and
+  connection-state events — `BotListener.onDisconnected` /
+  `onReconnecting` / `onGaveUp`, plus rate-limited WARN logging of refused
+  writes in `AbstractClient.send` (07).
 
-Both are on `master` and neither reaches `irc-web` until this ships; it pins
-1.1.0 and should stay there. New public API in #40, so 1.2.0 rather than a
-patch.
+None of this reaches `irc-web` until 1.2.0 ships; it pins 1.1.0 and should
+stay there.
 
-Cut it when the list stops growing, or sooner if something on it is bad enough
-that somebody is waiting. Steps in `RELEASING.md`.
+**Release notes draft** (for the maintainer to paste into the release):
 
-### Bot-facade pass for 1.2.0
-The split between "the low level refuses, the facade helps" was deliberate but
-only applied to message length. Decided what else belongs there: a bot that
-gets kicked should not sit in a channel it thinks it is in, CTCP and formatted
-text should not leak into MessageContext as raw control bytes, and a bot
-should be able to tell it is reconnecting rather than silently retrying
-forever. Landed so far: `CaseMapping` and `ServerSupport.getCaseMapping()`
-(task 01), `IRCFormatting.strip()` (task 02), the package-private `Ctcp`
-codec (task 03), `BasicIRCClient` dropping a channel on self-KICK plus its
-own nick/CASEMAPPING tracking (task 04), the CTCP/formatting facade on
-`IRCBot` — `MessageContext` CTCP accessors, `action()`, and the opt-in
-VERSION/PING/TIME responder (task 05), and `BotListener.onKick` plus opt-in
-auto-rejoin-after-kick and CASEMAPPING-aware self checks on the bot (task 06).
-Only connection-state events — DISCONNECTED / RECONNECTING / RECONNECTED /
-GAVE_UP — on `BotListener` remain (07, which also now owns logging a refused
-write in `AbstractClient.send`, found in review of 05). 1.2.0 can be cut once
-07 lands.
+- `CaseMapping` support: channel/nick folding now follows the server's
+  advertised `CASEMAPPING`, via `ServerSupport.getCaseMapping()`.
+- `IRCFormatting.strip()` removes mIRC formatting/colour codes from text.
+- CTCP support: `MessageContext` exposes CTCP accessors and `action()`, and
+  `IRCBot` has an opt-in VERSION/PING/TIME responder.
+- A bot that is kicked drops the channel from its own state; `BotListener`
+  gained `onKick`, and an opt-in auto-rejoin-after-kick.
+- `BotListener` gained connection-state events — `onDisconnected`,
+  `onReconnecting`, `onGaveUp` — so a bot can tell it is reconnecting instead
+  of silently retrying forever. `ClientConfigurationBuilder.connectionListener`
+  configures the handler.
+- Behaviour change: the `onReconnected` hook and `IRCBot`'s `onReady` now run
+  on a dedicated connection-event thread rather than a channel loop. Slow
+  work there (e.g. several flood-controlled sends) delays later connection
+  events for that client.
+- A write the outbound rate limiter refuses is now logged at WARN
+  (rate-limited, no payload) instead of silently dropped.
+- #39: a TLS handshake failure now quotes what the server said.
+- #40: the reconnect loop no longer holds a throttle open;
+  `ServerRefusedException` is new public API.
 
 ## Next
 

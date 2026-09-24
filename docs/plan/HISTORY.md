@@ -17,6 +17,37 @@ in the same commit.
 **Cost:** <what was hard, what was tried and abandoned, what not to retry.>
 -->
 
+## 2026-09-24 — Connection-state events land, closing the 1.2.0 bot-facade pass
+Wave 4, the last of the pass. `ConnectionEvent` (DISCONNECTED / RECONNECTING /
+RECONNECTED / GAVE_UP, with attempt/delay accessors) reaches bot code through
+`BotListener.onDisconnected` / `onReconnecting` / `onGaveUp` and through
+`ClientConfigurationBuilder.connectionListener` / `ClientConfiguration`'s
+connection-handler accessors, so a bot can tell it is reconnecting instead of
+silently retrying forever. All connection events for a client are delivered
+one at a time, strictly in order, on a single lazily started daemon thread
+("irc-connection-events") — a deliberate `disconnect()`/`stop()` publishes
+nothing. `disconnect()` waits up to 5s for that thread to drain, skipping the
+wait when called from a handler so a handler cannot deadlock itself. Also
+landed while in `AbstractClient.send`: a write the outbound rate limiter
+refuses now logs at WARN, rate-limited to about one line per interval plus a
+count, with no payload. Behaviour change worth flagging in release notes: the
+protected `onReconnected` hook and `IRCBot`'s `onReady` now run on the
+connection-event thread rather than a channel loop, so slow work there (e.g.
+several flood-controlled sends) delays later connection events; this is
+documented on the affected javadoc. This closes the bot-facade pass; 1.2.0 is
+ready to cut alongside #39/#40.
+**Cost:** Attempt 1 published RECONNECTING after scheduling the reconnect on
+a Netty event-loop thread, so under `reconnectBackoff(0, …)` against a closed
+port, RECONNECTING for attempt 2 could arrive before attempt 1, and a slow
+handler could see events from two threads concurrently — the ordering test
+failed 3/3 against it. Fixed by moving all publication onto one serial daemon
+thread rather than trying to order across loops. A dedicated `ExecutorService`
+for that thread also meant `disconnect()` calling `executor.awaitTermination`
+would deadlock if invoked from a handler running on that same executor;
+`disconnect()` now detects that case and skips the wait. The thread was
+originally non-daemon and had to be fixed to daemon so it does not keep the
+JVM alive after the client is done with it.
+
 ## 2026-09-24 — IRCBot reports kicks and can auto-rejoin
 Wave 3 of the 1.2.0 bot-facade pass. `BotListener` gains
 `onKick(bot, channel, kicked, by, reason)`, a default no-op dispatched

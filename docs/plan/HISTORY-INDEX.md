@@ -20,6 +20,7 @@ no row is one `planner` cannot find, and will re-plan.
 
 | Date | Task IDs | Summary | Heading (grep this exact string) |
 |---|---|---|---|
+| 2026-09-24 | 07 | Connection-state events (DISCONNECTED/RECONNECTING/RECONNECTED/GAVE_UP) on BotListener merged to master, closing the bot-facade pass; 1.2.0 ready to cut | ## 2026-09-24 — Connection-state events land, closing the 1.2.0 bot-facade pass |
 | 2026-09-24 | 06 | BotListener.onKick and opt-in auto-rejoin-after-kick merged to master (bot-facade pass wave 3) | ## 2026-09-24 — IRCBot reports kicks and can auto-rejoin |
 | 2026-09-24 | 04, 05 | BasicIRCClient drops kicked channels; bot CTCP responder merged to master (bot-facade pass wave 2) | ## 2026-09-24 — BasicIRCClient drops kicked channels, and the bot CTCP responder lands |
 | 2026-09-24 | 01, 02, 03 | CaseMapping, IRCFormatting.strip, Ctcp codec merged to master (bot-facade pass wave 1) | ## 2026-09-24 — CaseMapping, IRCFormatting.strip and the Ctcp codec land |
