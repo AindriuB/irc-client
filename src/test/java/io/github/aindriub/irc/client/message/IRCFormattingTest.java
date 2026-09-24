@@ -78,8 +78,28 @@ public class IRCFormattingTest {
     }
 
     @Test
+    public void leavesACommaAndBackgroundDigitWhenThereIsNoForegroundDigit() {
+        assertEquals(",5 apples", IRCFormatting.strip("\u0003,5 apples"));
+    }
+
+    @Test
     public void takesAtMostTwoForegroundDigits() {
         assertEquals("3", IRCFormatting.strip("\u0003123"));
+    }
+
+    @Test
+    public void leavesATrailingCommaAtEndOfString() {
+        assertEquals(",", IRCFormatting.strip("\u000304,"));
+    }
+
+    @Test
+    public void takesBackgroundDigitsThatRunToEndOfString() {
+        assertEquals("", IRCFormatting.strip("\u00031,2"));
+    }
+
+    @Test
+    public void stopsBackgroundDigitsAtTheFirstNonDigit() {
+        assertEquals("xhi", IRCFormatting.strip("\u000304,1xhi"));
     }
 
     @Test
@@ -93,13 +113,36 @@ public class IRCFormattingTest {
     }
 
     @Test
+    public void removesLowercaseHexColour() {
+        assertEquals("hi", IRCFormatting.strip("\u0004ff0000hi"));
+    }
+
+    @Test
     public void takesAtMostSixHexDigits() {
         assertEquals("7hi", IRCFormatting.strip("\u0004FF00007hi"));
     }
 
     @Test
-    public void leavesABareCommaForHexColourWhenThereIsNoBackgroundDigit() {
+    public void leavesDigitsWhenFewerThanSixHexDigitsFollow() {
+        assertEquals("add me", IRCFormatting.strip("\u0004add me"));
+        assertEquals("Bad", IRCFormatting.strip("\u0004Bad"));
+        assertEquals("gg0000hi", IRCFormatting.strip("\u0004gg0000hi"));
+    }
+
+    @Test
+    public void removesHexColourForegroundOnlyAtEndOfString() {
+        assertEquals("", IRCFormatting.strip("\u0004FF0000"));
+    }
+
+    @Test
+    public void leavesACommaAndPartialBackgroundWhenFewerThanSixHexDigitsFollow() {
+        assertEquals(",00hi", IRCFormatting.strip("\u0004FF0000,00hi"));
+    }
+
+    @Test
+    public void leavesABareCommaForHexColourWhenThereIsNoForegroundDigit() {
         assertEquals(",hi", IRCFormatting.strip("\u0004,hi"));
+        assertEquals(",FF0000hi", IRCFormatting.strip("\u0004,FF0000hi"));
     }
 
     @Test

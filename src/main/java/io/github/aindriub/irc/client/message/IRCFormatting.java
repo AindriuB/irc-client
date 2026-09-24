@@ -27,11 +27,15 @@ public final class IRCFormatting {
      * would read. Returns {@code null} when given {@code null}, so callers can
      * pass through an absent body without a null check of their own.
      *
-     * <p>The colour codes ({@code \u0003} and {@code \u0004}) carry digits that
-     * select a foreground and, optionally, a background colour; those digits are
-     * removed along with the control code itself, but only when they are part of
-     * a well-formed colour spec, so stray digits or a bare comma that follows
-     * are left untouched.
+     * <p>The colour code {@code \u0003} carries up to two decimal foreground
+     * digits and, only once at least one foreground digit is present, a comma
+     * followed by up to two decimal background digits. The hex colour code
+     * {@code \u0004} instead requires exactly six hex digits for the
+     * foreground and, if present, a comma followed by exactly six more hex
+     * digits for the background; anything short of that exact shape is not a
+     * colour spec, so only the control code itself is removed and the digits
+     * that follow are left untouched. In both cases a comma that is not part
+     * of a well-formed spec is left in place.
      */
     public static String strip(String text) {
         if (text == null) {
@@ -53,10 +57,10 @@ public final class IRCFormatting {
                     i++;
                     break;
                 case COLOUR:
-                    i = skipColourCode(text, i + 1, 2, IRCFormatting::isDecimalDigit);
+                    i = skipDecimalColourCode(text, i + 1);
                     break;
                 case HEX_COLOUR:
-                    i = skipColourCode(text, i + 1, 6, IRCFormatting::isHexDigit);
+                    i = skipHexColourCode(text, i + 1);
                     break;
                 default:
                     out.append(c);
@@ -68,23 +72,58 @@ public final class IRCFormatting {
     }
 
     /**
-     * Consumes the digits following a colour control code: up to
-     * {@code maxDigits} foreground digits, then, only if a comma is
-     * immediately followed by a digit, the comma and up to {@code maxDigits}
-     * background digits. Returns the index just past what was consumed.
+     * Consumes the digits following {@code \u0003}: up to two decimal
+     * foreground digits, then, only if at least one foreground digit was
+     * found and the following comma is itself followed by a digit, the comma
+     * and up to two decimal background digits. Returns the index just past
+     * what was consumed.
      */
-    private static int skipColourCode(String text, int start, int maxDigits, DigitPredicate isDigit) {
-        int i = start;
+    private static int skipDecimalColourCode(String text, int start) {
         int length = text.length();
-        int fgEnd = Math.min(i + maxDigits, length);
-        while (i < fgEnd && isDigit.test(text.charAt(i))) {
+        int i = start;
+        int fgEnd = Math.min(i + 2, length);
+        while (i < fgEnd && isDecimalDigit(text.charAt(i))) {
             i++;
         }
-        if (i < length && text.charAt(i) == ',' && i + 1 < length && isDigit.test(text.charAt(i + 1))) {
+        boolean hasForeground = i > start;
+        if (hasForeground && i < length && text.charAt(i) == ',' && i + 1 < length && isDecimalDigit(text.charAt(i + 1))) {
             i++;
-            int bgEnd = Math.min(i + maxDigits, length);
-            while (i < bgEnd && isDigit.test(text.charAt(i))) {
+            int bgEnd = Math.min(i + 2, length);
+            while (i < bgEnd && isDecimalDigit(text.charAt(i))) {
                 i++;
+            }
+        }
+        return i;
+    }
+
+    /**
+     * Consumes the digits following {@code \u0004}: exactly six hex digits
+     * for the foreground and, only when that foreground is present in full
+     * and is followed by a comma and exactly six more hex digits, that comma
+     * and its background digits. When fewer than six foreground digits are
+     * available, nothing is consumed, since the digits do not form a colour
+     * spec and are left as ordinary text. Returns the index just past what
+     * was consumed.
+     */
+    private static int skipHexColourCode(String text, int start) {
+        int length = text.length();
+        int i = start;
+        int fgEnd = Math.min(i + 6, length);
+        while (i < fgEnd && isHexDigit(text.charAt(i))) {
+            i++;
+        }
+        if (i - start != 6) {
+            return start;
+        }
+        if (i < length && text.charAt(i) == ',') {
+            int bgStart = i + 1;
+            int bgEnd = Math.min(bgStart + 6, length);
+            int j = bgStart;
+            while (j < bgEnd && isHexDigit(text.charAt(j))) {
+                j++;
+            }
+            if (j - bgStart == 6) {
+                i = j;
             }
         }
         return i;
@@ -96,10 +135,5 @@ public final class IRCFormatting {
 
     private static boolean isHexDigit(char c) {
         return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-    }
-
-    @FunctionalInterface
-    private interface DigitPredicate {
-        boolean test(char c);
     }
 }
