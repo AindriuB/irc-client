@@ -675,6 +675,27 @@ public class IRCBotTest {
     }
 
     @Test
+    public void aChannelRejoinedAfterAKickSurvivesAReconnect() throws Exception {
+        IRCBotBuilder builder = IRCBot.builder().host("127.0.0.1").port(server.getPort())
+                .nick("bot").autoRejoinAfterKick(true);
+        builder.client().secure(false).reconnect(true).reconnectBackoff(30, 60, 0)
+                .registrationTimeout(3000);
+        bot = builder.build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":someone!u@h KICK #chan bot :out");
+        assertTrue(server.awaitLine("JOIN #chan", before, TIMEOUT));
+
+        int beforeReconnect = server.receivedCount();
+        server.dropConnection();
+
+        assertTrue("the rejoin after a kick is tracked, so a reconnect rejoins it too",
+                server.awaitLine("JOIN #chan", beforeReconnect, TIMEOUT));
+    }
+
+    @Test
     public void doesNotRejoinWhenSomeoneElseIsKicked() throws Exception {
         bot = builder().autoRejoinAfterKick(true).listener(recording()).build();
         bot.start();
@@ -682,11 +703,12 @@ public class IRCBotTest {
         int before = server.receivedCount();
 
         server.push(":someone!u@h KICK #chan other :out");
+        // Messages from one connection are handled in the order they arrive, so
+        // waiting for this marker's effect proves the KICK above was already
+        // fully handled, including any rejoin decision.
+        server.push(":marker!u@h PRIVMSG #chan :fence");
 
-        // The listener notification and the rejoin check run in the same handler
-        // call, so once the event is observed the decision has already been made.
-        assertTrue(awaitEvent("kick #chan other someone out"));
-        Thread.sleep(150);
+        assertTrue(awaitEvent("message #chan marker fence"));
         for (String line : server.getReceived().subList(before, server.receivedCount())) {
             assertFalse("no rejoin for someone else's kick: " + line, line.startsWith("JOIN"));
         }
@@ -700,9 +722,9 @@ public class IRCBotTest {
         int before = server.receivedCount();
 
         server.push(":someone!u@h KICK #chan bot :out");
+        server.push(":marker!u@h PRIVMSG #chan :fence");
 
-        assertTrue(awaitEvent("kick #chan bot someone out"));
-        Thread.sleep(150);
+        assertTrue(awaitEvent("message #chan marker fence"));
         for (String line : server.getReceived().subList(before, server.receivedCount())) {
             assertFalse("no rejoin when disabled: " + line, line.startsWith("JOIN"));
         }
@@ -759,6 +781,13 @@ public class IRCBotTest {
         server.push(":someone!u@h KICK #chan bot{1} :out");
 
         assertTrue(server.awaitLine("JOIN #chan", before, TIMEOUT));
+        long deadline = System.currentTimeMillis() + TIMEOUT;
+        while (!bot.getClient().getJoinedChannels().contains("#chan")
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue("rejoin should register with the client even with tracking off",
+                bot.getClient().getJoinedChannels().contains("#chan"));
         for (String event : events) {
             assertFalse("still self under rfc1459 with tracking off",
                     event.contains("self message"));

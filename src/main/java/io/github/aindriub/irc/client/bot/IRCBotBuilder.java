@@ -128,8 +128,9 @@ public class IRCBotBuilder {
     /**
      * Rejoins a channel the bot was kicked from. Off by default: a bot that keeps
      * getting kicked and keeps rejoining can look like it is fighting whoever kicked
-     * it. Does not resend a channel key; a keyed channel the bot is kicked from
-     * stays parted.
+     * it. The rejoin is sent without a key, so a keyed channel will most likely
+     * have its JOIN refused by the server; the key the bot originally joined with,
+     * if any, is not remembered or resent.
      */
     public IRCBotBuilder autoRejoinAfterKick(boolean autoRejoinAfterKick) {
         this.autoRejoinAfterKick = autoRejoinAfterKick;
