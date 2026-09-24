@@ -9,6 +9,19 @@ import org.junit.Test;
 
 public class CtcpTest {
 
+    /**
+     * Every CTCP input used across this test class, kept in one place so the
+     * round-trip invariant test below exercises them all.
+     */
+    private static final String[] CTCP_INPUTS = {
+        "\u0001ACTION waves\u0001",
+        "\u0001version\u0001",
+        "\u0001PING 123",
+        "\u0001PING a\u0001VERSION\u0001",
+        "\u0001PING \u0001",
+        "\u0001PING ",
+    };
+
     @Test
     public void actionWithArgumentIsCtcp() {
         String text = "\u0001ACTION waves\u0001";
@@ -147,5 +160,121 @@ public class CtcpTest {
     @Test
     public void buildAllowsArgumentWithSpace() {
         assertEquals("\u0001ACTION waves at you\u0001", Ctcp.build("ACTION", "waves at you"));
+    }
+
+    @Test
+    public void emptyCommandFollowedByArgumentIsNotCtcp() {
+        String text = "\u0001 x\u0001";
+        assertFalse(Ctcp.isCtcp(text));
+        assertNull(Ctcp.command(text));
+        assertNull(Ctcp.argument(text));
+    }
+
+    @Test
+    public void emptyCommandWithOnlySpaceIsNotCtcp() {
+        String text = "\u0001 \u0001";
+        assertFalse(Ctcp.isCtcp(text));
+        assertNull(Ctcp.command(text));
+        assertNull(Ctcp.argument(text));
+    }
+
+    @Test
+    public void argumentIsNullNotEmptyWhenNothingFollowsCommandBeforeDelimiter() {
+        String text = "\u0001PING \u0001";
+        assertTrue(Ctcp.isCtcp(text));
+        assertEquals("PING", Ctcp.command(text));
+        assertNull(Ctcp.argument(text));
+    }
+
+    @Test
+    public void argumentIsNullNotEmptyWhenNothingFollowsCommandWithoutDelimiter() {
+        String text = "\u0001PING ";
+        assertTrue(Ctcp.isCtcp(text));
+        assertEquals("PING", Ctcp.command(text));
+        assertNull(Ctcp.argument(text));
+    }
+
+    @Test
+    public void commandWithNulIsNotCtcp() {
+        String text = "\u0001PI\u0000NG\u0001";
+        assertFalse(Ctcp.isCtcp(text));
+        assertNull(Ctcp.command(text));
+        assertNull(Ctcp.argument(text));
+    }
+
+    @Test
+    public void commandWithCrIsNotCtcp() {
+        String text = "\u0001PI\rNG\u0001";
+        assertFalse(Ctcp.isCtcp(text));
+        assertNull(Ctcp.command(text));
+        assertNull(Ctcp.argument(text));
+    }
+
+    @Test
+    public void commandWithLfIsNotCtcp() {
+        String text = "\u0001PI\nNG\u0001";
+        assertFalse(Ctcp.isCtcp(text));
+        assertNull(Ctcp.command(text));
+        assertNull(Ctcp.argument(text));
+    }
+
+    @Test
+    public void argumentWithNulIsNotCtcp() {
+        String text = "\u0001PING a\u0000b\u0001";
+        assertFalse(Ctcp.isCtcp(text));
+        assertNull(Ctcp.command(text));
+        assertNull(Ctcp.argument(text));
+    }
+
+    @Test
+    public void argumentWithCrIsNotCtcp() {
+        String text = "\u0001PING a\rb\u0001";
+        assertFalse(Ctcp.isCtcp(text));
+        assertNull(Ctcp.command(text));
+        assertNull(Ctcp.argument(text));
+    }
+
+    @Test
+    public void argumentWithLfIsNotCtcp() {
+        String text = "\u0001PING a\nb\u0001";
+        assertFalse(Ctcp.isCtcp(text));
+        assertNull(Ctcp.command(text));
+        assertNull(Ctcp.argument(text));
+    }
+
+    @Test
+    public void roundTripNeverThrowsForKnownCtcpInputs() {
+        for (String text : CTCP_INPUTS) {
+            assertRoundTripInvariant(text);
+        }
+    }
+
+    @Test
+    public void roundTripNeverThrowsForCommandWithNul() {
+        assertRoundTripInvariant("\u0001PI\u0000NG\u0001");
+    }
+
+    @Test
+    public void roundTripNeverThrowsForArgumentWithNul() {
+        assertRoundTripInvariant("\u0001PING a\u0000b\u0001");
+    }
+
+    @Test
+    public void roundTripNeverThrowsForMissingArgument() {
+        assertRoundTripInvariant("\u0001PING \u0001");
+        assertRoundTripInvariant("\u0001PING ");
+    }
+
+    /**
+     * Asserts the invariant task 03 exists to guarantee: if {@code text} is
+     * CTCP, building from its parsed command and argument must never throw,
+     * because task 05 echoes stranger-controlled CTCP arguments straight
+     * through {@link Ctcp#build}.
+     */
+    private static void assertRoundTripInvariant(String text) {
+        if (!Ctcp.isCtcp(text)) {
+            return;
+        }
+        Ctcp.build(Ctcp.command(text), Ctcp.argument(text));
     }
 }

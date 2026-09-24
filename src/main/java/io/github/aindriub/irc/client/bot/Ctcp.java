@@ -14,15 +14,26 @@ final class Ctcp {
     }
 
     /**
-     * True when text is a CTCP payload: starts with the delimiter and has more
-     * than just the delimiter(s).
+     * True when text is a CTCP payload: starts with the delimiter, has a
+     * non-empty command, and neither the command nor the argument (if any)
+     * contains a NUL, CR or LF. Text failing only this last check is treated
+     * as plain text rather than CTCP, so callers never see an invariant
+     * violation when they round-trip it through {@link #build}.
      */
     static boolean isCtcp(String text) {
         if (text == null || text.length() < 2 || text.charAt(0) != DELIMITER) {
             return false;
         }
         String body = bodyOf(text);
-        return !body.isEmpty();
+        if (body.isEmpty()) {
+            return false;
+        }
+        String command = commandPart(body);
+        if (command.isEmpty() || containsControlChar(command)) {
+            return false;
+        }
+        String argument = argumentPart(body);
+        return argument == null || !containsControlChar(argument);
     }
 
     /**
@@ -32,10 +43,7 @@ final class Ctcp {
         if (!isCtcp(text)) {
             return null;
         }
-        String body = bodyOf(text);
-        int space = body.indexOf(' ');
-        String command = space < 0 ? body : body.substring(0, space);
-        return command.toUpperCase(Locale.ROOT);
+        return commandPart(bodyOf(text)).toUpperCase(Locale.ROOT);
     }
 
     /**
@@ -45,9 +53,7 @@ final class Ctcp {
         if (!isCtcp(text)) {
             return null;
         }
-        String body = bodyOf(text);
-        int space = body.indexOf(' ');
-        return space < 0 ? null : body.substring(space + 1);
+        return argumentPart(bodyOf(text));
     }
 
     /**
@@ -94,5 +100,37 @@ final class Ctcp {
     private static String bodyOf(String text) {
         int end = text.indexOf(DELIMITER, 1);
         return end < 0 ? text.substring(1) : text.substring(1, end);
+    }
+
+    /**
+     * The command portion of a CTCP body: everything before the first space,
+     * or the whole body when there is no space.
+     */
+    private static String commandPart(String body) {
+        int space = body.indexOf(' ');
+        return space < 0 ? body : body.substring(0, space);
+    }
+
+    /**
+     * The argument portion of a CTCP body, or null when there is no space or
+     * nothing follows it.
+     */
+    private static String argumentPart(String body) {
+        int space = body.indexOf(' ');
+        if (space < 0) {
+            return null;
+        }
+        String argument = body.substring(space + 1);
+        return argument.isEmpty() ? null : argument;
+    }
+
+    private static boolean containsControlChar(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '\r' || c == '\n' || c == '\u0000') {
+                return true;
+            }
+        }
+        return false;
     }
 }
