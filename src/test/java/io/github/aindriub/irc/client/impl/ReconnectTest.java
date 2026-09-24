@@ -111,6 +111,32 @@ public class ReconnectTest {
     }
 
     @Test
+    public void doesNotRejoinAChannelItWasKickedFrom() throws Exception {
+        client = client(true);
+        client.connect();
+        client.sendCommand(new Join(Arrays.asList("#one", "#two")));
+        assertTrue(server.awaitLine("JOIN #one,#two", TIMEOUT));
+
+        server.push(":op!u@h KICK #one bot :reason");
+
+        long deadline = System.currentTimeMillis() + TIMEOUT;
+        while (client.getJoinedChannels().contains("#one")
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertEquals(Arrays.asList("#two"), client.getJoinedChannels());
+        int before = server.receivedCount();
+
+        server.dropConnection();
+
+        assertTrue(server.awaitLine("JOIN ", before, TIMEOUT));
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("should not rejoin a channel it was kicked from: " + line,
+                    line.contains("#one"));
+        }
+    }
+
+    @Test
     public void aDeliberateDisconnectDoesNotReconnect() throws Exception {
         client = client(true);
         client.connect();
