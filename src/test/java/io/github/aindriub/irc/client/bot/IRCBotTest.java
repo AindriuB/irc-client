@@ -897,6 +897,42 @@ public class IRCBotTest {
         }
     }
 
+    @Test
+    public void aServerPrefixedCtcpStillReachesOnMessageAndSendsNothing() throws Exception {
+        bot = builder().respondToCtcp(true).listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":irc.example.net PRIVMSG bot :\u0001VERSION\u0001");
+
+        assertTrue(awaitEvent("message bot null \u0001VERSION\u0001"));
+        Thread.sleep(150);
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("no reply for a server-prefixed CTCP", line.startsWith("NOTICE"));
+        }
+    }
+
+    @Test
+    public void aCtcpReplyThatWouldNotFitInOneLineIsDropped() throws Exception {
+        bot = builder().respondToCtcp(true).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        StringBuilder huge = new StringBuilder();
+        for (int i = 0; i < 500; i++) {
+            huge.append('1');
+        }
+        server.push(":someone!u@h PRIVMSG bot :\u0001PING " + huge + "\u0001");
+        Thread.sleep(200);
+
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("an over-long CTCP reply must not be split or sent: " + line,
+                    line.startsWith("NOTICE"));
+        }
+    }
+
     private IRCBotBuilder builder() {
         IRCBotBuilder builder = IRCBot.builder().host("127.0.0.1").port(server.getPort())
                 .nick("bot");

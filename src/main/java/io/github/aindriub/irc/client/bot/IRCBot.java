@@ -424,6 +424,13 @@ public class IRCBot {
         if (!respondToCtcp || !context.isCtcp()) {
             return;
         }
+        String sender = context.getSender();
+        if (sender == null) {
+            // Servers probe a freshly connected client with a CTCP VERSION that
+            // arrives with a server prefix rather than a user's. There is nobody
+            // to NOTICE back.
+            return;
+        }
         String command = context.getCtcpCommand();
         String reply;
         if ("VERSION".equals(command)) {
@@ -436,7 +443,23 @@ public class IRCBot {
             // ACTION and anything unknown: no reply.
             return;
         }
-        notice(context.getSender(), reply);
+        try {
+            Notice noticeCommand = new Notice(sender, reply);
+            if (IRCText.byteLength(noticeCommand.render(), charset()) + 2
+                    > IRCText.MAX_MESSAGE_BYTES) {
+                // Splitting would break the CTCP framing: half a
+                // \u0001COMMAND ...\u0001 in one line and plain text in the next.
+                // Sending nothing is safer than sending garbage.
+                LOGGER.debug("CTCP {} reply to {} does not fit in one line, dropping", command,
+                        sender);
+                return;
+            }
+            client.sendCommand(noticeCommand);
+        } catch (RuntimeException e) {
+            // A responder failure must never stop dispatchCommand or the
+            // onMessage listeners that follow it.
+            LOGGER.warn("CTCP {} responder failed for {}", command, sender, e);
+        }
     }
 
     private void dispatchCommand(MessageContext context) {
