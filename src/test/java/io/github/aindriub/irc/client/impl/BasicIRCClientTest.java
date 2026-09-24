@@ -55,14 +55,21 @@ public class BasicIRCClientTest {
     public void aKickOfAnotherNickLeavesTheChannelJoined() throws Exception {
         client = client();
         client.connect();
-        client.sendCommand(new Join("#chan"));
-        assertTrue(server.awaitLine("JOIN #chan", TIMEOUT));
+        client.sendCommand(new Join(Arrays.asList("#chan", "#sentinel")));
+        assertTrue(server.awaitLine("JOIN #chan,#sentinel", TIMEOUT));
 
         server.push(":op!u@h KICK #chan someoneelse :reason");
+        // A second, unambiguous kick of self on another channel: waiting for its
+        // deterministic effect proves the first line was processed too, since a
+        // single connection handles lines in order, without sleeping blind.
+        server.push(":op!u@h KICK #sentinel bot :reason");
 
-        // Nothing to wait for happening, so give the event loop a moment and
-        // check the tracking held rather than changed.
-        Thread.sleep(200);
+        waitUntil(TIMEOUT, new Condition() {
+            @Override
+            public boolean met() {
+                return !client.getJoinedChannels().contains("#sentinel");
+            }
+        });
         assertEquals(Arrays.asList("#chan"), client.getJoinedChannels());
     }
 
@@ -102,13 +109,22 @@ public class BasicIRCClientTest {
         client = client();
         client.connect();
         server.push(":bot!u@h NICK nick[1]");
-        client.sendCommand(new Join("#chan{x}"));
-        assertTrue(server.awaitLine("JOIN #chan{x}", TIMEOUT));
+        client.sendCommand(new Join(Arrays.asList("#chan{x}", "#sentinel")));
+        assertTrue(server.awaitLine("JOIN #chan{x},#sentinel", TIMEOUT));
         server.push(":stub 005 nick[1] CASEMAPPING=ascii :are supported by this server");
 
         server.push(":op!u@h KICK #Chan[x] NICK{1} :reason");
+        // A second kick that matches self exactly, so waiting for its deterministic
+        // effect proves the ascii-mismatched kick above was already processed,
+        // without sleeping blind.
+        server.push(":op!u@h KICK #sentinel nick[1] :reason");
 
-        Thread.sleep(200);
+        waitUntil(TIMEOUT, new Condition() {
+            @Override
+            public boolean met() {
+                return !client.getJoinedChannels().contains("#sentinel");
+            }
+        });
         assertEquals(Arrays.asList("#chan{x}"), client.getJoinedChannels());
     }
 

@@ -20,6 +20,7 @@ import io.github.aindriub.irc.client.configuration.ClientConfigurationBuilder;
 import io.github.aindriub.irc.client.testsupport.StubIRCServer;
 import io.github.aindriub.irc.client.event.MessageListener;
 import io.github.aindriub.irc.client.message.IRCMessage;
+import io.github.aindriub.irc.client.state.CaseMapping;
 
 /**
  * Drives a real socket against an in-process stub server, which is the only way to
@@ -347,11 +348,11 @@ public class ReconnectTest {
         assertTrue(server.awaitLine("NICK bot", TIMEOUT));
         server.push(":stub 005 bot CASEMAPPING=ascii :are supported by this server");
         long deadline = System.currentTimeMillis() + TIMEOUT;
-        while (client.getCaseMapping() != io.github.aindriub.irc.client.state.CaseMapping.ASCII
+        while (client.getCaseMapping() != CaseMapping.ASCII
                 && System.currentTimeMillis() < deadline) {
             Thread.sleep(20);
         }
-        assertEquals(io.github.aindriub.irc.client.state.CaseMapping.ASCII,
+        assertEquals(CaseMapping.ASCII,
                 client.getCaseMapping());
 
         // The stub never sends ISUPPORT on its own, so the reconnected session gets
@@ -361,12 +362,39 @@ public class ReconnectTest {
         assertTrue(server.awaitLine("NICK bot", before, TIMEOUT));
 
         deadline = System.currentTimeMillis() + TIMEOUT;
-        while (client.getCaseMapping() != io.github.aindriub.irc.client.state.CaseMapping.RFC1459
+        while (client.getCaseMapping() != CaseMapping.RFC1459
                 && System.currentTimeMillis() < deadline) {
             Thread.sleep(20);
         }
         assertEquals("stale CASEMAPPING must not survive a reconnect",
-                io.github.aindriub.irc.client.state.CaseMapping.RFC1459, client.getCaseMapping());
+                CaseMapping.RFC1459, client.getCaseMapping());
+    }
+
+    @Test
+    public void aCaseFoldedDuplicateJoinRejoinsOnceRatherThanTwice() throws Exception {
+        client = client(true);
+        client.connect();
+        client.sendCommand(new Join("#A"));
+        assertTrue(server.awaitLine("JOIN #A", TIMEOUT));
+
+        client.sendCommand(new Join("#a"));
+        assertEquals(Arrays.asList("#a"), client.getJoinedChannels());
+        int before = server.receivedCount();
+
+        server.dropConnection();
+
+        // Once the rejoin for #a has arrived, the (synchronous) rejoin of every
+        // tracked channel has already finished, so checking the lines sent since is
+        // safe without sleeping blind.
+        assertTrue("expected #a to be rejoined", server.awaitLine("JOIN #a", before, TIMEOUT));
+        int joinLines = 0;
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            if (line.startsWith("JOIN")) {
+                joinLines++;
+            }
+        }
+        assertEquals("a case-folded duplicate must replace the tracked key, not add a "
+                + "second rejoin", 1, joinLines);
     }
 
     @Test
