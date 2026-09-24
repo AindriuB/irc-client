@@ -933,6 +933,32 @@ public class IRCBotTest {
         }
     }
 
+    @Test
+    public void aCtcpReplyDroppedOnlyBecauseOfTheRelayAllowanceIsNotSent() throws Exception {
+        bot = builder().respondToCtcp(true).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        // "NOTICE someone :\u0001PING " + argument + "\u0001" renders as 23 bytes
+        // plus the argument. At 420 characters the whole NOTICE is 443 bytes,
+        // comfortably under the 510 byte payload limit on its own, but the 100
+        // byte relay allowance for ":nick!user@host " pushes it over: it must
+        // still be dropped, not sent truncated.
+        StringBuilder argument = new StringBuilder();
+        for (int i = 0; i < 420; i++) {
+            argument.append('9');
+        }
+        server.push(":someone!u@h PRIVMSG bot :\u0001PING " + argument + "\u0001");
+        Thread.sleep(200);
+
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("a reply that only overflows once the relay allowance is reserved "
+                    + "must still be dropped, not sent truncated: " + line,
+                    line.startsWith("NOTICE"));
+        }
+    }
+
     private IRCBotBuilder builder() {
         IRCBotBuilder builder = IRCBot.builder().host("127.0.0.1").port(server.getPort())
                 .nick("bot");

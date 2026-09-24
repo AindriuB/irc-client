@@ -181,12 +181,16 @@ public class IRCBot {
      * Split on the same terms as {@link #say}, with each line wrapped in its own
      * complete {@code \u0001ACTION ...\u0001} rather than an action's text being
      * cut across several lines.
+     *
+     * @throws IllegalArgumentException when text contains a CTCP delimiter
+     *     ({@code \u0001}), CR, LF or NUL, since those cannot appear inside a
+     *     CTCP argument
      */
     public void action(String target, String text) {
         String prefix = "PRIVMSG " + target + " :\u0001ACTION ";
         String suffix = "\u0001";
         int overhead = IRCText.byteLength(prefix, charset()) + IRCText.byteLength(suffix, charset())
-                + ACTION_PREFIX_ALLOWANCE + 2;
+                + RELAY_PREFIX_ALLOWANCE + 2;
         for (String piece : Messages.split(text, overhead, charset())) {
             client.sendCommand(
                     new PrivMsg(target, Ctcp.build("ACTION", piece.isEmpty() ? null : piece)));
@@ -195,9 +199,9 @@ public class IRCBot {
 
     /**
      * Room left for the {@code :nick!user@host } the server prepends when it
-     * relays the message, mirroring {@code PrivMsg}'s own allowance.
+     * relays a message, mirroring {@code PrivMsg}'s own allowance.
      */
-    private static final int ACTION_PREFIX_ALLOWANCE = 100;
+    private static final int RELAY_PREFIX_ALLOWANCE = 100;
 
     private java.nio.charset.Charset charset() {
         return configuration.getCharSet();
@@ -432,20 +436,25 @@ public class IRCBot {
             return;
         }
         String command = context.getCtcpCommand();
-        String reply;
-        if ("VERSION".equals(command)) {
-            reply = Ctcp.build("VERSION", CTCP_VERSION_REPLY);
-        } else if ("PING".equals(command)) {
-            reply = Ctcp.build("PING", context.getCtcpArgument());
-        } else if ("TIME".equals(command)) {
-            reply = Ctcp.build("TIME", java.time.ZonedDateTime.now().toString());
-        } else {
+        if (!"VERSION".equals(command) && !"PING".equals(command) && !"TIME".equals(command)) {
             // ACTION and anything unknown: no reply.
             return;
         }
         try {
+            String reply;
+            if ("VERSION".equals(command)) {
+                reply = Ctcp.build("VERSION", CTCP_VERSION_REPLY);
+            } else if ("PING".equals(command)) {
+                reply = Ctcp.build("PING", context.getCtcpArgument());
+            } else {
+                reply = Ctcp.build("TIME", java.time.ZonedDateTime.now().toString());
+            }
             Notice noticeCommand = new Notice(sender, reply);
-            if (IRCText.byteLength(noticeCommand.render(), charset()) + 2
+            // Reserve the same room PrivMsg/action() leave for the
+            // :nick!user@host the server prepends when it relays the message, so
+            // a reply that fits unrelayed cannot be truncated past its closing
+            // \u0001 once the server has prefixed it.
+            if (IRCText.byteLength(noticeCommand.render(), charset()) + RELAY_PREFIX_ALLOWANCE + 2
                     > IRCText.MAX_MESSAGE_BYTES) {
                 // Splitting would break the CTCP framing: half a
                 // \u0001COMMAND ...\u0001 in one line and plain text in the next.
@@ -456,8 +465,8 @@ public class IRCBot {
             }
             client.sendCommand(noticeCommand);
         } catch (RuntimeException e) {
-            // A responder failure must never stop dispatchCommand or the
-            // onMessage listeners that follow it.
+            // A responder failure - building the reply or sending it - must
+            // never stop dispatchCommand or the onMessage listeners that follow.
             LOGGER.warn("CTCP {} responder failed for {}", command, sender, e);
         }
     }
