@@ -52,6 +52,11 @@ public class IRCBotBuilder {
 
     /**
      * Server password, or a Twitch {@code oauth:...} token.
+     *
+     * @throws IllegalArgumentException when {@code password} is not null and
+     *                                  contains whitespace, starts with ':', or
+     *                                  contains CR, LF or NUL. The value itself is
+     *                                  never included in the message.
      */
     public IRCBotBuilder password(String password) {
         client.password(password);

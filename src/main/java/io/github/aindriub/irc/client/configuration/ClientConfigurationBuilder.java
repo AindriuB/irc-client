@@ -4,6 +4,7 @@ import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.util.Objects;
 
+import io.github.aindriub.irc.client.IRCText;
 import io.github.aindriub.irc.client.event.ConnectionEvent;
 import io.github.aindriub.irc.client.event.EventHandler;
 import io.github.aindriub.irc.client.message.IRCMessage;
@@ -100,8 +101,16 @@ public class ClientConfigurationBuilder {
 
     /**
      * Server password, or a Twitch {@code oauth:...} token.
+     *
+     * @throws IllegalArgumentException when {@code password} is not null and
+     *                                  contains whitespace, starts with ':', or
+     *                                  contains CR, LF or NUL. The value itself is
+     *                                  never included in the message.
      */
     public ClientConfigurationBuilder password(String password) {
+        if (password != null) {
+            IRCText.requireParam(password, "password");
+        }
         configuration.getRegistration().setPassword(password);
         return this;
     }
@@ -120,11 +129,23 @@ public class ClientConfigurationBuilder {
      * Authenticates with SASL PLAIN, which most modern networks prefer to a
      * NickServ message. Requires TLS in practice, since PLAIN sends the password
      * base64 encoded rather than hashed. Adds the sasl capability for you.
+     *
+     * @throws NullPointerException     when {@code password} is null
+     * @throws IllegalArgumentException when {@code password} contains CR, LF or
+     *                                  NUL, or {@code username} is not null and
+     *                                  contains whitespace, starts with ':', or
+     *                                  contains CR, LF or NUL. Neither value is
+     *                                  ever included in the message.
      */
     public ClientConfigurationBuilder sasl(String username, String password) {
+        Objects.requireNonNull(password, "sasl password");
+        IRCText.requireText(password, "sasl password");
+        if (username != null) {
+            IRCText.requireParam(username, "sasl username");
+        }
         RegistrationConfiguration registration = configuration.getRegistration();
         registration.setSaslUsername(username);
-        registration.setSaslPassword(Objects.requireNonNull(password, "sasl password"));
+        registration.setSaslPassword(password);
         if (!registration.getCapabilities().contains(SASL_CAPABILITY)) {
             registration.getCapabilities().add(SASL_CAPABILITY);
         }

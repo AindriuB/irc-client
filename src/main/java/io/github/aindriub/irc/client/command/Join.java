@@ -43,6 +43,17 @@ public class Join extends Command {
         this.keys = Collections.unmodifiableList(new ArrayList<>(keys));
     }
 
+    @Override
+    public String toString() {
+        // render() still sends the keys; a caller that logs a keyed Join must not
+        // have them reach the log the way Pass and Authenticate redact theirs.
+        if (keys.isEmpty()) {
+            return super.toString();
+        }
+        return BASE_COMMAND + SPACE + Channels.join(channels, "channel") + SPACE + "<"
+                + keys.size() + (keys.size() == 1 ? " key" : " keys") + " redacted>";
+    }
+
     /**
      * The key for a channel this command joins, or null when it needs none.
      */
