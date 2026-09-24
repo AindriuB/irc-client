@@ -43,7 +43,10 @@ public abstract class BotListener {
 
     /**
      * The bot has registered and joined its channels, on first connect and again
-     * after every reconnect.
+     * after every reconnect. On first connect this runs on the caller's thread
+     * (whichever called {@code start()}); after a reconnect it runs on the
+     * client's dedicated connection-event thread, so sending several lines here
+     * under flood control delays later connection events.
      */
     public void onReady(IRCBot bot) {
     }

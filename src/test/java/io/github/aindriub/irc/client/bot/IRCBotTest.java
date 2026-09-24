@@ -566,6 +566,48 @@ public class IRCBotTest {
     }
 
     @Test
+    public void stoppingFromOnGaveUpReturnsPromptlyAndPublishesNothingMore() throws Exception {
+        // onGaveUp runs on the client's own connection-event thread, which is the
+        // very thread stop() would otherwise have to wait on; it must recognise
+        // that and return quickly rather than block for up to the 5s drain cap.
+        final long[] stopDurationMillis = {-1};
+        IRCBotBuilder builder = IRCBot.builder().host("127.0.0.1").port(server.getPort())
+                .nick("bot").listener(new BotListener() {
+                    @Override
+                    public void onReady(IRCBot ircBot) {
+                        events.add("ready");
+                    }
+
+                    @Override
+                    public void onGaveUp(IRCBot ircBot, int attempts) {
+                        events.add("gaveUp " + attempts);
+                        long start = System.nanoTime();
+                        ircBot.stop();
+                        stopDurationMillis[0] = (System.nanoTime() - start) / 1_000_000;
+                    }
+                });
+        builder.client().secure(false).reconnect(true).reconnectBackoff(30, 60, 1)
+                .registrationTimeout(1000);
+        bot = builder.build();
+        bot.start();
+        assertTrue(awaitEvent("ready"));
+        events.clear();
+
+        server.close();
+
+        assertTrue("expected onGaveUp(bot, 1)", awaitEvent("gaveUp 1"));
+        long deadline = System.currentTimeMillis() + TIMEOUT;
+        while (stopDurationMillis[0] < 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue("stop() from within onGaveUp must not hang", stopDurationMillis[0] >= 0);
+        assertTrue("expected it to return well under the 5s drain cap, took "
+                + stopDurationMillis[0] + "ms", stopDurationMillis[0] < 1000);
+        assertEquals("nothing must reach a listener once that stop() has run", 1,
+                events.stream().filter(e -> e.startsWith("gaveUp")).count());
+    }
+
+    @Test
     public void tracksWhoIsInAChannel() throws Exception {
         bot = builder().channels("#chan").build();
         bot.start();

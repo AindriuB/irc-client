@@ -181,6 +181,109 @@ public class ConnectionEventsTest {
     }
 
     @Test
+    public void aHandlerThatDisconnectsFromDisconnectedReturnsPromptlyAndPublishesNothingMore()
+            throws Exception {
+        // disconnect() called from inside a handler runs on the very thread that
+        // is trying to shut down and drain, so it must recognise that (rather
+        // than block on itself for up to the 5s drain cap) and return quickly.
+        final long[] disconnectDurationMillis = {-1};
+        client = new BasicIRCClient(new ClientConfigurationBuilder()
+                .host("127.0.0.1")
+                .port(server.getPort())
+                .secure(false)
+                .nick("bot")
+                .reconnect(false)
+                .registrationTimeout(3000)
+                .connectionListener(new EventHandler<ConnectionEvent>() {
+                    @Override
+                    public void publishEvent(Event<ConnectionEvent> event) {
+                        events.add(event.getPayload());
+                        if (event.getPayload().getType() == ConnectionEvent.Type.DISCONNECTED) {
+                            long start = System.nanoTime();
+                            client.disconnect();
+                            disconnectDurationMillis[0] =
+                                    (System.nanoTime() - start) / 1_000_000;
+                        }
+                    }
+                })
+                .build());
+        client.connect();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.dropConnection();
+
+        assertTrue("expected DISCONNECTED", awaitEventCount(1, TIMEOUT));
+        long deadline = System.currentTimeMillis() + TIMEOUT;
+        while (disconnectDurationMillis[0] < 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue("disconnect() from within the DISCONNECTED handler must not hang",
+                disconnectDurationMillis[0] >= 0);
+        assertTrue("expected it to return well under the 5s drain cap, took "
+                + disconnectDurationMillis[0] + "ms", disconnectDurationMillis[0] < 1000);
+        assertEquals("nothing must be published once that disconnect() has run", 1,
+                events.size());
+        for (ILoggingEvent entry : logged) {
+            assertFalse("the handler calling disconnect() on itself must not be reported "
+                    + "as a failed handler: " + entry.getFormattedMessage(),
+                    entry.getFormattedMessage().contains("Connection handler"));
+        }
+    }
+
+    @Test
+    public void aHandlerThatDisconnectsFromGaveUpReturnsPromptlyAndPublishesNothingMore()
+            throws Exception {
+        final long[] disconnectDurationMillis = {-1};
+        client = new BasicIRCClient(new ClientConfigurationBuilder()
+                .host("127.0.0.1")
+                .port(server.getPort())
+                .secure(false)
+                .nick("bot")
+                .reconnect(true)
+                .reconnectBackoff(10, 10, 1)
+                .registrationTimeout(1000)
+                .connectionListener(new EventHandler<ConnectionEvent>() {
+                    @Override
+                    public void publishEvent(Event<ConnectionEvent> event) {
+                        events.add(event.getPayload());
+                        if (event.getPayload().getType() == ConnectionEvent.Type.GAVE_UP) {
+                            long start = System.nanoTime();
+                            client.disconnect();
+                            disconnectDurationMillis[0] =
+                                    (System.nanoTime() - start) / 1_000_000;
+                        }
+                    }
+                })
+                .build());
+        client.connect();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.close();
+
+        assertTrue("expected a GAVE_UP event", awaitType(ConnectionEvent.Type.GAVE_UP, TIMEOUT));
+        long deadline = System.currentTimeMillis() + TIMEOUT;
+        while (disconnectDurationMillis[0] < 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue("disconnect() from within the GAVE_UP handler must not hang",
+                disconnectDurationMillis[0] >= 0);
+        assertTrue("expected it to return well under the 5s drain cap, took "
+                + disconnectDurationMillis[0] + "ms", disconnectDurationMillis[0] < 1000);
+        int gaveUpCount = 0;
+        for (ConnectionEvent event : events) {
+            if (event.getType() == ConnectionEvent.Type.GAVE_UP) {
+                gaveUpCount++;
+            }
+        }
+        assertEquals("nothing must be published once that disconnect() has run", 1, gaveUpCount);
+        for (ILoggingEvent entry : logged) {
+            assertFalse("the handler calling disconnect() on itself must not be reported "
+                    + "as a failed handler: " + entry.getFormattedMessage(),
+                    entry.getFormattedMessage().contains("Connection handler"));
+        }
+    }
+
+    @Test
     public void reconnectAttemptsArriveStrictlyOrderedAndNeverOverlap() throws Exception {
         // No backoff at all: with a naive implementation, attempt 2 could be
         // scheduled and published before attempt 1's own publish has returned.

@@ -47,6 +47,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.concurrent.DefaultEventExecutor;
+import io.netty.util.concurrent.DefaultThreadFactory;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.Future;
 import io.netty.handler.codec.LineBasedFrameDecoder;
@@ -124,7 +125,8 @@ public abstract class AbstractClient implements Client {
      * not just later events but the reconnect attempts themselves, since scheduling
      * the next attempt happens on this same thread.
      */
-    private final EventExecutor connectionEventLoop = new DefaultEventExecutor();
+    private final EventExecutor connectionEventLoop = new DefaultEventExecutor(
+            new DefaultThreadFactory("irc-connection-events", true));
 
     /** Refused writes from the event loop since the last WARN about them. */
     private final AtomicInteger refusedWritesSinceLastLog = new AtomicInteger();
@@ -371,6 +373,20 @@ public abstract class AbstractClient implements Client {
                 + "(most recent cause: {})", refused, String.valueOf(cause));
     }
 
+    /**
+     * Reports any refusals counted since the last WARN, so a burst right before
+     * {@code disconnect()} is not silently rounded down to whatever the last
+     * periodic report said.
+     */
+    private void flushRefusedWriteLog() {
+        int refused = refusedWritesSinceLastLog.getAndSet(0);
+        if (refused > 0) {
+            lastRefusedWriteLogAt.set(System.currentTimeMillis());
+            LOGGER.warn("{} send(s) from the event loop were refused since the last report",
+                    refused);
+        }
+    }
+
     @Override
     public void disconnect() {
         synchronized (lifecycleLock) {
@@ -389,6 +405,7 @@ public abstract class AbstractClient implements Client {
                 Thread.currentThread().interrupt();
                 throw new IRCClientException("Interrupted while closing the connection", e);
             } finally {
+                flushRefusedWriteLog();
                 workerGroup.shutdownGracefully();
                 awaitConnectionEventLoopShutdown();
             }
