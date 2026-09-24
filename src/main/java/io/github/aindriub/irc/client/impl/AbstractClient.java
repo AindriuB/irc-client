@@ -21,6 +21,9 @@ import io.github.aindriub.irc.client.IRCText;
 import io.github.aindriub.irc.client.configuration.ClientConfiguration;
 import io.github.aindriub.irc.client.configuration.ConnectionConfiguration;
 import io.github.aindriub.irc.client.configuration.ReconnectConfiguration;
+import io.github.aindriub.irc.client.event.ConnectionEvent;
+import io.github.aindriub.irc.client.event.Event;
+import io.github.aindriub.irc.client.event.EventHandler;
 import io.github.aindriub.irc.client.handler.ConnectionLostHandler;
 import io.github.aindriub.irc.client.handler.IdleConnectionHandler;
 import io.github.aindriub.irc.client.handler.OutboundRateLimiter;
@@ -284,6 +287,19 @@ public abstract class AbstractClient implements Client {
         if (current.channel().eventLoop().inEventLoop()) {
             // A listener replying from a callback runs on the event loop, and
             // waiting there would deadlock the thread that has to do the writing.
+            // The promise is not awaited here, so a refusal (for example
+            // OutboundRateLimiter's queue being full) would otherwise be silently
+            // dropped; log it instead of throwing, since there is nobody left to
+            // catch a throw from a fire-and-forget call.
+            write.addListener(new GenericFutureListener<ChannelFuture>() {
+                @Override
+                public void operationComplete(ChannelFuture future) {
+                    if (!future.isSuccess()) {
+                        LOGGER.warn("Send from the event loop was refused: {}",
+                                String.valueOf(future.cause()));
+                    }
+                }
+            });
             return;
         }
         try {
@@ -335,11 +351,22 @@ public abstract class AbstractClient implements Client {
         if (shutdown) {
             return;
         }
+        // A fresh loss is one that did not happen in the middle of an ongoing
+        // reconnect cycle: reconnectAttempts is zero only right after connect() or
+        // a successful reconnect. A registration failure during a reconnect attempt
+        // also closes the channel and re-enters here, but that must not be reported
+        // as a second DISCONNECTED for the same outage.
+        boolean freshLoss = reconnectAttempts.get() == 0;
+        if (freshLoss) {
+            publishConnectionEvent(ConnectionEvent.disconnected());
+        }
         if (!configuration.getReconnect().isEnabled()) {
             LOGGER.info("Connection lost; reconnection is disabled");
             return;
         }
-        LOGGER.warn("Connection lost; reconnecting");
+        if (freshLoss) {
+            LOGGER.warn("Connection lost; reconnecting");
+        }
         scheduleReconnect();
     }
 
@@ -348,6 +375,7 @@ public abstract class AbstractClient implements Client {
         final int attempt = reconnectAttempts.incrementAndGet();
         if (reconnect.getMaxAttempts() > 0 && attempt > reconnect.getMaxAttempts()) {
             LOGGER.error("Giving up after {} reconnect attempts", reconnect.getMaxAttempts());
+            publishConnectionEvent(ConnectionEvent.gaveUp(attempt - 1));
             return;
         }
 
@@ -370,7 +398,9 @@ public abstract class AbstractClient implements Client {
         } catch (RejectedExecutionException e) {
             // The group is shutting down, which means we are on our way out anyway.
             LOGGER.debug("Not reconnecting, the event loop is shutting down");
+            return;
         }
+        publishConnectionEvent(ConnectionEvent.reconnecting(attempt, delay));
     }
 
     /**
@@ -426,7 +456,24 @@ public abstract class AbstractClient implements Client {
     private void reconnectSucceeded() {
         reconnectAttempts.set(0);
         serverRefused.set(false);
+        publishConnectionEvent(ConnectionEvent.reconnected());
         onReconnected();
+    }
+
+    /**
+     * Publishes a connection-state change to every registered connection handler.
+     * One misbehaving handler must not stop the others, nor the reconnect logic
+     * that called this.
+     */
+    private void publishConnectionEvent(ConnectionEvent connectionEvent) {
+        Event<ConnectionEvent> event = new Event<>(connectionEvent);
+        for (EventHandler<ConnectionEvent> handler : configuration.getConnectionHandlers()) {
+            try {
+                handler.publishEvent(event);
+            } catch (RuntimeException e) {
+                LOGGER.warn("Connection handler {} failed", handler.getClass().getName(), e);
+            }
+        }
     }
 
     /**

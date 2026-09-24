@@ -506,6 +506,64 @@ public class IRCBotTest {
     }
 
     @Test
+    public void notifiesListenersOfDisconnectionThenReconnectionThenReady() throws Exception {
+        IRCBotBuilder builder = IRCBot.builder().host("127.0.0.1").port(server.getPort())
+                .nick("bot").listener(recording());
+        builder.client().secure(false).reconnect(true).reconnectBackoff(30, 60, 0)
+                .registrationTimeout(3000);
+        bot = builder.build();
+        bot.start();
+        assertTrue(awaitEvent("ready"));
+        events.clear();
+
+        server.dropConnection();
+
+        assertTrue("expected onDisconnected before onReconnecting",
+                awaitEvent("disconnected"));
+        assertTrue("expected onReconnecting for the first attempt",
+                awaitEvent("reconnecting 1 true"));
+        assertTrue("reconnection success is still reported via onReady",
+                awaitEvent("ready"));
+    }
+
+    @Test
+    public void aDeliberateStopFiresNeitherDisconnectedNorReconnecting() throws Exception {
+        IRCBotBuilder builder = IRCBot.builder().host("127.0.0.1").port(server.getPort())
+                .nick("bot").listener(recording());
+        builder.client().secure(false).reconnect(true).reconnectBackoff(30, 60, 0)
+                .registrationTimeout(3000);
+        bot = builder.build();
+        bot.start();
+        assertTrue(awaitEvent("ready"));
+        events.clear();
+
+        bot.stop();
+        Thread.sleep(300);
+
+        assertFalse("a deliberate stop must not report a disconnection",
+                events.contains("disconnected"));
+        assertFalse("a deliberate stop must not trigger a reconnect",
+                events.contains("reconnecting 1 true"));
+    }
+
+    @Test
+    public void reportsGaveUpWhenTheServerNeverComesBack() throws Exception {
+        IRCBotBuilder builder = IRCBot.builder().host("127.0.0.1").port(server.getPort())
+                .nick("bot").listener(recording());
+        builder.client().secure(false).reconnect(true).reconnectBackoff(30, 60, 1)
+                .registrationTimeout(1000);
+        bot = builder.build();
+        bot.start();
+        assertTrue(awaitEvent("ready"));
+        events.clear();
+
+        server.close();
+
+        assertTrue("expected onGaveUp(bot, 1) once the single attempt is exhausted",
+                awaitEvent("gaveUp 1"));
+    }
+
+    @Test
     public void tracksWhoIsInAChannel() throws Exception {
         bot = builder().channels("#chan").build();
         bot.start();
@@ -1223,6 +1281,21 @@ public class IRCBotTest {
             @Override
             public void onReady(IRCBot bot) {
                 events.add("ready");
+            }
+
+            @Override
+            public void onDisconnected(IRCBot bot) {
+                events.add("disconnected");
+            }
+
+            @Override
+            public void onReconnecting(IRCBot bot, int attempt, long delayMillis) {
+                events.add("reconnecting " + attempt + " " + (delayMillis >= 0));
+            }
+
+            @Override
+            public void onGaveUp(IRCBot bot, int attempts) {
+                events.add("gaveUp " + attempts);
             }
         };
     }

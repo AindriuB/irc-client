@@ -4,6 +4,7 @@ import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.util.Objects;
 
+import io.github.aindriub.irc.client.event.ConnectionEvent;
 import io.github.aindriub.irc.client.event.EventHandler;
 import io.github.aindriub.irc.client.message.IRCMessage;
 
@@ -223,6 +224,16 @@ public class ClientConfigurationBuilder {
     public ClientConfigurationBuilder messageListener(EventHandler<IRCMessage> messageHandler) {
         configuration.getMessageHandlers()
                 .add(Objects.requireNonNull(messageHandler, "messageHandler"));
+        return this;
+    }
+
+    /**
+     * Subscribes to connection-state changes: a lost connection, a reconnect
+     * attempt, a successful reconnect, or giving up.
+     */
+    public ClientConfigurationBuilder connectionListener(EventHandler<ConnectionEvent> connectionHandler) {
+        configuration.getConnectionHandlers()
+                .add(Objects.requireNonNull(connectionHandler, "connectionHandler"));
         return this;
     }
 

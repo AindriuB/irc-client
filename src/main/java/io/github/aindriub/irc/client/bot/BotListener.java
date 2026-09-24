@@ -53,4 +53,36 @@ public abstract class BotListener {
      */
     public void onOther(IRCBot bot, IRCMessage message) {
     }
+
+    /**
+     * The connection was lost unexpectedly. Runs on the event loop and must not
+     * block. Fires only when the connection is actually lost, never for a
+     * deliberate {@code disconnect()}/shutdown, since the application already
+     * knows it asked for that. If reconnection is enabled, a successful
+     * reconnect is still reported through {@link #onReady}, not here.
+     */
+    public void onDisconnected(IRCBot bot) {
+    }
+
+    /**
+     * A reconnect attempt is about to be made. Runs on the event loop and must
+     * not block. Reconnection success is reported through {@link #onReady},
+     * not here.
+     *
+     * @param bot         the bot
+     * @param attempt     the attempt number, counting from 1
+     * @param delayMillis the delay before this attempt actually runs
+     */
+    public void onReconnecting(IRCBot bot, int attempt, long delayMillis) {
+    }
+
+    /**
+     * Reconnection was abandoned after the configured number of attempts. Runs
+     * on the event loop and must not block.
+     *
+     * @param bot      the bot
+     * @param attempts the number of attempts made before giving up
+     */
+    public void onGaveUp(IRCBot bot, int attempts) {
+    }
 }
