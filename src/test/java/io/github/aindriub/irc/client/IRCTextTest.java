@@ -51,12 +51,61 @@ public class IRCTextTest {
     }
 
     @Test
-    public void reportsTheOffendingValueWithEscapedControlCharacters() {
+    public void reportsALeadingColonWithoutTheValue() {
         try {
-            IRCText.requireText("hello\r\nQUIT", "message");
+            IRCText.requireParam(":#chan", "value");
             fail("expected IllegalArgumentException");
         } catch (IllegalArgumentException e) {
-            assertTrue(e.getMessage(), e.getMessage().contains("hello\\r\\nQUIT"));
+            assertEquals("value must not start with ':', which would make it a "
+                    + "trailing parameter", e.getMessage());
+            assertTrue(e.getMessage(), !e.getMessage().contains("#chan"));
+        }
+    }
+
+    @Test
+    public void reportsWhitespaceByIndexWithoutTheValue() {
+        try {
+            IRCText.requireParam("#chan extra", "value");
+            fail("expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertEquals("value must not contain whitespace (at index 5 of 11)", e.getMessage());
+            assertTrue(e.getMessage(), !e.getMessage().contains("extra"));
+        }
+    }
+
+    @Test
+    public void reportsCarriageReturnByCodePointAndIndexWithoutTheValue() {
+        try {
+            IRCText.requireText("hello\rQUIT", "value");
+            fail("expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertEquals("value must not contain CR, LF or NUL, which would let it inject a "
+                    + "separate IRC message (U+000D at index 5)", e.getMessage());
+            assertTrue(e.getMessage(), !e.getMessage().contains("QUIT"));
+        }
+    }
+
+    @Test
+    public void reportsLineFeedByCodePointAndIndexWithoutTheValue() {
+        try {
+            IRCText.requireText("hello\nQUIT", "value");
+            fail("expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertEquals("value must not contain CR, LF or NUL, which would let it inject a "
+                    + "separate IRC message (U+000A at index 5)", e.getMessage());
+            assertTrue(e.getMessage(), !e.getMessage().contains("QUIT"));
+        }
+    }
+
+    @Test
+    public void reportsNulByCodePointAndIndexWithoutTheValue() {
+        try {
+            IRCText.requireText("hello\0QUIT", "value");
+            fail("expected IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertEquals("value must not contain CR, LF or NUL, which would let it inject a "
+                    + "separate IRC message (U+0000 at index 5)", e.getMessage());
+            assertTrue(e.getMessage(), !e.getMessage().contains("QUIT"));
         }
     }
 

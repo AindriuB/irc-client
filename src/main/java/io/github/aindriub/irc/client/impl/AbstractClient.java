@@ -339,10 +339,12 @@ public abstract class AbstractClient implements Client {
             write.await();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IRCClientException("Interrupted while sending: " + payload, e);
+            throw new IRCClientException(
+                    "Interrupted while sending a " + payload.length() + "-character line", e);
         }
         if (!write.isSuccess()) {
-            throw new IRCClientException("Failed to send: " + payload, write.cause());
+            throw new IRCClientException(
+                    "Failed to send a " + payload.length() + "-character line", write.cause());
         }
     }
 
