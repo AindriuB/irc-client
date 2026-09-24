@@ -102,6 +102,9 @@ public class ClientConfigurationBuilder {
     /**
      * Server password, or a Twitch {@code oauth:...} token.
      *
+     * <p>{@link RegistrationConfiguration#setPassword(String)} is deliberately
+     * permissive; this builder is where the value is checked.
+     *
      * @throws IllegalArgumentException when {@code password} is not null and
      *                                  contains whitespace, starts with ':', or
      *                                  contains CR, LF or NUL. The value itself is
@@ -129,6 +132,9 @@ public class ClientConfigurationBuilder {
      * Authenticates with SASL PLAIN, which most modern networks prefer to a
      * NickServ message. Requires TLS in practice, since PLAIN sends the password
      * base64 encoded rather than hashed. Adds the sasl capability for you.
+     *
+     * <p>{@link RegistrationConfiguration#setSaslPassword(String)} is deliberately
+     * permissive; this builder is where the value is checked.
      *
      * @throws NullPointerException     when {@code password} is null
      * @throws IllegalArgumentException when {@code password} contains CR, LF or
@@ -224,8 +230,12 @@ public class ClientConfigurationBuilder {
     }
 
     /**
-     * Logs the raw wire traffic. Note that this includes the server password and any
-     * SASL credentials, which the commands themselves take care to redact.
+     * Logs the raw wire traffic via Netty's {@code LoggingHandler}. Note that this
+     * includes the server password and any SASL credentials: the redaction that
+     * {@link io.github.aindriub.irc.client.command.Pass#toString()} and
+     * {@link io.github.aindriub.irc.client.command.Authenticate#toString()} apply is
+     * only for the command's own log form, and this logs the actual bytes sent on the
+     * wire instead. Do not enable this where logs are kept, such as production.
      */
     public ClientConfigurationBuilder debug(boolean debug) {
         configuration.setDebug(debug);

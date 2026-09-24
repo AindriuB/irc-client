@@ -93,17 +93,43 @@ public class RegistrationSecretLogTest {
         drain(channel);
         channel.writeInbound(":irc.example CAP * ACK :sasl");
         drain(channel);
+
+        IllegalArgumentException thrown = null;
         try {
             // RegistrationHandler.exceptionCaught completes the future first, then
             // forwards the raw cause down the pipeline; EmbeddedChannel rethrows it
             // here from its default tail once nothing else has handled it.
             channel.writeInbound("AUTHENTICATE +");
-        } catch (IllegalArgumentException expected) {
-            // Handled above; what matters is what the future and the log captured.
+        } catch (IllegalArgumentException e) {
+            thrown = e;
+        }
+        if (thrown == null) {
+            fail("expected Authenticate.plain to reject the SASL password with an "
+                    + "IllegalArgumentException");
         }
 
         assertTrue("expected the SASL exchange to fail", registered.isCompletedExceptionally());
+        assertTrue("expected the future's cause chain to contain the very exception "
+                + "Authenticate.plain threw, so this test cannot pass because the SASL "
+                + "exchange failed for some unrelated reason",
+                causeChainContains(registered, thrown));
         assertNoSecretAnywhere(registered, SASL_SECRET);
+    }
+
+    private static boolean causeChainContains(CompletableFuture<Void> registered,
+            Throwable expected) {
+        try {
+            registered.get();
+        } catch (ExecutionException e) {
+            for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+                if (cause == expected) {
+                    return true;
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return false;
     }
 
     private static void drain(EmbeddedChannel channel) {
@@ -118,9 +144,7 @@ public class RegistrationSecretLogTest {
             fail("expected the future to complete exceptionally");
         } catch (ExecutionException e) {
             for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
-                String message = cause.getMessage();
-                assertFalse("exception message leaked the secret: " + cause,
-                        message != null && message.contains(secret));
+                assertNoSecretInThrowable(cause, secret);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -133,11 +157,32 @@ public class RegistrationSecretLogTest {
                             && event.getFormattedMessage().contains(secret));
             IThrowableProxy throwableProxy = event.getThrowableProxy();
             while (throwableProxy != null) {
-                assertFalse("a logged throwable leaked the secret: " + throwableProxy.getMessage(),
-                        throwableProxy.getMessage() != null
-                                && throwableProxy.getMessage().contains(secret));
+                assertNoSecretInThrowableProxy(throwableProxy, secret);
                 throwableProxy = throwableProxy.getCause();
             }
+        }
+    }
+
+    private static void assertNoSecretInThrowable(Throwable cause, String secret) {
+        String message = cause.getMessage();
+        assertFalse("exception message leaked the secret: " + cause,
+                message != null && message.contains(secret));
+        for (Throwable suppressed : cause.getSuppressed()) {
+            String suppressedMessage = suppressed.getMessage();
+            assertFalse("a suppressed exception leaked the secret: " + suppressed,
+                    suppressedMessage != null && suppressedMessage.contains(secret));
+        }
+    }
+
+    private static void assertNoSecretInThrowableProxy(IThrowableProxy throwableProxy,
+            String secret) {
+        String message = throwableProxy.getMessage();
+        assertFalse("a logged throwable leaked the secret: " + message,
+                message != null && message.contains(secret));
+        for (IThrowableProxy suppressed : throwableProxy.getSuppressed()) {
+            String suppressedMessage = suppressed.getMessage();
+            assertFalse("a suppressed logged throwable leaked the secret: " + suppressedMessage,
+                    suppressedMessage != null && suppressedMessage.contains(secret));
         }
     }
 }
