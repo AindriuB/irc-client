@@ -225,6 +225,70 @@ public class BasicIRCClientTest {
                 client.getJoinedChannels().isEmpty());
     }
 
+    @Test
+    public void joiningACaseFoldedDuplicateReplacesRatherThanDuplicatesTheEntry() throws Exception {
+        client = client();
+        client.connect();
+        client.sendCommand(new Join("#A"));
+        assertTrue(server.awaitLine("JOIN #A", TIMEOUT));
+
+        client.sendCommand(new Join("#a"));
+
+        assertEquals("re-joining under a different case must not track it twice",
+                Arrays.asList("#a"), client.getJoinedChannels());
+    }
+
+    @Test
+    public void selfIsTheNickFromRplWelcomeAfterACollisionRetry() throws Exception {
+        server.withholdWelcome(true);
+        client = client();
+        Thread connecting = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                client.connect();
+            }
+        });
+        connecting.start();
+
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        // Simulate the server settling the client on a different nick than the one
+        // it asked for, the way a collision retry during registration would.
+        server.push(":stub 001 bot_ :Welcome to the stub");
+        connecting.join(TIMEOUT);
+        assertTrue(client.isRegistered());
+
+        client.sendCommand(new Join("#chan"));
+        assertTrue(server.awaitLine("JOIN #chan", TIMEOUT));
+
+        server.push(":op!u@h KICK #chan bot_ :reason");
+
+        waitUntilEmpty(TIMEOUT);
+        assertTrue(client.getJoinedChannels().isEmpty());
+    }
+
+    @Test
+    public void aNegatedCasemappingTokenResetsToTheDefault() throws Exception {
+        client = client();
+        client.connect();
+        server.push(":stub 005 bot CASEMAPPING=ascii :are supported by this server");
+        waitUntil(TIMEOUT, new Condition() {
+            @Override
+            public boolean met() {
+                return client.getCaseMapping() == CaseMapping.ASCII;
+            }
+        });
+
+        server.push(":stub 005 bot -CASEMAPPING :are supported by this server");
+
+        waitUntil(TIMEOUT, new Condition() {
+            @Override
+            public boolean met() {
+                return client.getCaseMapping() == CaseMapping.RFC1459;
+            }
+        });
+        assertEquals(CaseMapping.RFC1459, client.getCaseMapping());
+    }
+
     private void waitUntilEmpty(long timeoutMillis) throws InterruptedException {
         waitUntil(timeoutMillis, new Condition() {
             @Override

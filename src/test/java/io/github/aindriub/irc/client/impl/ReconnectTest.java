@@ -341,6 +341,35 @@ public class ReconnectTest {
     }
 
     @Test
+    public void reconnectingWithoutIsupportResetsCaseMappingToTheDefault() throws Exception {
+        client = client(true);
+        client.connect();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        server.push(":stub 005 bot CASEMAPPING=ascii :are supported by this server");
+        long deadline = System.currentTimeMillis() + TIMEOUT;
+        while (client.getCaseMapping() != io.github.aindriub.irc.client.state.CaseMapping.ASCII
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertEquals(io.github.aindriub.irc.client.state.CaseMapping.ASCII,
+                client.getCaseMapping());
+
+        // The stub never sends ISUPPORT on its own, so the reconnected session gets
+        // none: the ASCII learned from the previous connection must not survive.
+        int before = server.receivedCount();
+        server.dropConnection();
+        assertTrue(server.awaitLine("NICK bot", before, TIMEOUT));
+
+        deadline = System.currentTimeMillis() + TIMEOUT;
+        while (client.getCaseMapping() != io.github.aindriub.irc.client.state.CaseMapping.RFC1459
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertEquals("stale CASEMAPPING must not survive a reconnect",
+                io.github.aindriub.irc.client.state.CaseMapping.RFC1459, client.getCaseMapping());
+    }
+
+    @Test
     public void reportsNotRegisteredBeforeConnecting() {
         client = client(true);
 

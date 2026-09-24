@@ -90,13 +90,26 @@ public class BasicIRCClient extends AbstractClient implements CommandClient {
                 }
                 for (String channel : join.getChannels()) {
                     String key = join.getKey(channel);
-                    joined.put(channel, key == null ? NO_KEY : key);
+                    addChannel(channel, key == null ? NO_KEY : key);
                 }
             } else if (command instanceof Part) {
                 for (String channel : ((Part) command).getChannels()) {
                     removeChannel(channel);
                 }
             }
+        }
+    }
+
+    /**
+     * Records a channel as joined, replacing any entry that already matches under
+     * the current case mapping rather than adding a second one: joining {@code #a}
+     * after {@code #A} must not leave both spellings tracked, or a reconnect would
+     * send a JOIN for a channel the server considers one and the same.
+     */
+    private void addChannel(String channel, String key) {
+        synchronized (joined) {
+            removeChannel(channel);
+            joined.put(channel, key);
         }
     }
 
@@ -170,6 +183,11 @@ public class BasicIRCClient extends AbstractClient implements CommandClient {
      */
     @Override
     protected void configurePipeline(Channel ch) {
+        // Reset before the new registration, not after it fails or succeeds: state
+        // from the previous connection (a CASEMAPPING that server no longer sends,
+        // a nick a collision retry left us on) must not survive into the next one.
+        selfNick = configuration.getRegistration().getNick();
+        caseMappingToken = null;
         super.configurePipeline(ch);
         ch.pipeline().addAfter("stringDecoder", "channelKickTrackingHandler",
                 new ChannelKickTrackingHandler());
@@ -241,6 +259,15 @@ public class BasicIRCClient extends AbstractClient implements CommandClient {
             for (int i = 1; i < last; i++) {
                 String token = message.getParam(i);
                 if (token == null || token.isEmpty()) {
+                    continue;
+                }
+                if (token.charAt(0) == '-') {
+                    // A negated token, e.g. "-CASEMAPPING": the server is taking back
+                    // an earlier advertisement, which for CASEMAPPING means reverting
+                    // to the RFC 2812 default rather than keeping the stale value.
+                    if ("CASEMAPPING".equalsIgnoreCase(token.substring(1))) {
+                        caseMappingToken = null;
+                    }
                     continue;
                 }
                 int equals = token.indexOf('=');
