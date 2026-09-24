@@ -32,6 +32,7 @@ public class IRCBotBuilder {
     private boolean portSet = false;
     private boolean trackChannelState = true;
     private boolean respondToCtcp = false;
+    private boolean autoRejoinAfterKick = false;
 
     public IRCBotBuilder host(String host) {
         client.host(host);
@@ -125,6 +126,17 @@ public class IRCBotBuilder {
     }
 
     /**
+     * Rejoins a channel the bot was kicked from. Off by default: a bot that keeps
+     * getting kicked and keeps rejoining can look like it is fighting whoever kicked
+     * it. Does not resend a channel key; a keyed channel the bot is kicked from
+     * stays parted.
+     */
+    public IRCBotBuilder autoRejoinAfterKick(boolean autoRejoinAfterKick) {
+        this.autoRejoinAfterKick = autoRejoinAfterKick;
+        return this;
+    }
+
+    /**
      * The underlying client configuration, for TLS, timeouts, flood protection,
      * reconnection and everything else this builder does not surface.
      */
@@ -141,6 +153,6 @@ public class IRCBotBuilder {
             throw new IllegalStateException("a nick is required");
         }
         return new IRCBot(configuration, channels, listeners, commands, commandPrefix,
-                trackChannelState, respondToCtcp);
+                trackChannelState, respondToCtcp, autoRejoinAfterKick);
     }
 }

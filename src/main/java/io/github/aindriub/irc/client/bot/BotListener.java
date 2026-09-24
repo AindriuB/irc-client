@@ -30,6 +30,18 @@ public abstract class BotListener {
     }
 
     /**
+     * Someone was removed from a channel, possibly the bot itself.
+     *
+     * @param bot     the bot
+     * @param channel the channel the kick happened in
+     * @param kicked  the nick that was kicked
+     * @param by      the nick that did the kicking, or null when a server did it
+     * @param reason  the kick reason, or null when none was given
+     */
+    public void onKick(IRCBot bot, String channel, String kicked, String by, String reason) {
+    }
+
+    /**
      * The bot has registered and joined its channels, on first connect and again
      * after every reconnect.
      */
