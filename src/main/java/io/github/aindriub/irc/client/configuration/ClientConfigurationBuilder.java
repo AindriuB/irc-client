@@ -4,6 +4,7 @@ import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.util.Objects;
 
+import io.github.aindriub.irc.client.event.ConnectionEvent;
 import io.github.aindriub.irc.client.event.EventHandler;
 import io.github.aindriub.irc.client.message.IRCMessage;
 
@@ -223,6 +224,18 @@ public class ClientConfigurationBuilder {
     public ClientConfigurationBuilder messageListener(EventHandler<IRCMessage> messageHandler) {
         configuration.getMessageHandlers()
                 .add(Objects.requireNonNull(messageHandler, "messageHandler"));
+        return this;
+    }
+
+    /**
+     * Subscribes to connection-state changes: a lost connection, a reconnect
+     * attempt, a successful reconnect, or giving up. See {@link ConnectionEvent}
+     * for the delivery thread and ordering guarantee, and note in particular that
+     * a blocking handler delays the reconnect attempts themselves.
+     */
+    public ClientConfigurationBuilder connectionListener(EventHandler<ConnectionEvent> connectionHandler) {
+        configuration.getConnectionHandlers()
+                .add(Objects.requireNonNull(connectionHandler, "connectionHandler"));
         return this;
     }
 

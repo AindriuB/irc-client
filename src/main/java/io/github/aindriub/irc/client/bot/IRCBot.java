@@ -23,6 +23,9 @@ import io.github.aindriub.irc.client.command.Part;
 import io.github.aindriub.irc.client.command.PrivMsg;
 import io.github.aindriub.irc.client.command.Topic;
 import io.github.aindriub.irc.client.configuration.ClientConfiguration;
+import io.github.aindriub.irc.client.event.ConnectionEvent;
+import io.github.aindriub.irc.client.event.Event;
+import io.github.aindriub.irc.client.event.EventHandler;
 import io.github.aindriub.irc.client.event.MessageListener;
 import io.github.aindriub.irc.client.impl.BasicIRCClient;
 import io.github.aindriub.irc.client.message.IRCMessage;
@@ -89,6 +92,7 @@ public class IRCBot {
             configuration.getMessageHandlers().add(channelState);
         }
         configuration.getMessageHandlers().add(new Router());
+        configuration.getConnectionHandlers().add(new ConnectionRouter());
         this.client = new BasicIRCClient(configuration) {
             @Override
             protected void onReconnected() {
@@ -434,6 +438,59 @@ public class IRCBot {
                         listener.onOther(IRCBot.this, raw);
                     }
                 });
+            }
+        }
+    }
+
+    /**
+     * Turns connection-state changes into bot events. RECONNECTED is not
+     * forwarded: the bot only considers itself ready once it has re-registered
+     * and rejoined its channels, which is reported through {@link #onReady} by
+     * {@code onReconnected()} below, not here.
+     */
+    private final class ConnectionRouter implements EventHandler<ConnectionEvent> {
+
+        @Override
+        public void publishEvent(Event<ConnectionEvent> event) {
+            ConnectionEvent connectionEvent = event.getPayload();
+            switch (connectionEvent.getType()) {
+                case DISCONNECTED:
+                    for (final BotListener listener : listeners) {
+                        safely(listener, "onDisconnected", new Runnable() {
+                            @Override
+                            public void run() {
+                                listener.onDisconnected(IRCBot.this);
+                            }
+                        });
+                    }
+                    break;
+                case RECONNECTING:
+                    final int attempt = connectionEvent.getAttempt();
+                    final long delayMillis = connectionEvent.getDelayMillis();
+                    for (final BotListener listener : listeners) {
+                        safely(listener, "onReconnecting", new Runnable() {
+                            @Override
+                            public void run() {
+                                listener.onReconnecting(IRCBot.this, attempt, delayMillis);
+                            }
+                        });
+                    }
+                    break;
+                case GAVE_UP:
+                    final int attempts = connectionEvent.getAttempt();
+                    for (final BotListener listener : listeners) {
+                        safely(listener, "onGaveUp", new Runnable() {
+                            @Override
+                            public void run() {
+                                listener.onGaveUp(IRCBot.this, attempts);
+                            }
+                        });
+                    }
+                    break;
+                case RECONNECTED:
+                default:
+                    // Reported via onReady once registration and rejoining finish.
+                    break;
             }
         }
     }

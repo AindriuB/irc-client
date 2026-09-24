@@ -43,7 +43,10 @@ public abstract class BotListener {
 
     /**
      * The bot has registered and joined its channels, on first connect and again
-     * after every reconnect.
+     * after every reconnect. On first connect this runs on the caller's thread
+     * (whichever called {@code start()}); after a reconnect it runs on the
+     * client's dedicated connection-event thread, so sending several lines here
+     * under flood control delays later connection events.
      */
     public void onReady(IRCBot bot) {
     }
@@ -52,5 +55,41 @@ public abstract class BotListener {
      * Anything without a dedicated callback.
      */
     public void onOther(IRCBot bot, IRCMessage message) {
+    }
+
+    /**
+     * The connection was lost unexpectedly. Runs on the client's dedicated
+     * connection-event thread, one connection event at a time and never
+     * concurrently with another, and must not block, since that also delays the
+     * reconnect attempt that follows. Fires only when the connection is actually
+     * lost, never for a deliberate {@code disconnect()}/shutdown, since the
+     * application already knows it asked for that. If reconnection is enabled, a
+     * successful reconnect is still reported through {@link #onReady}, not here.
+     */
+    public void onDisconnected(IRCBot bot) {
+    }
+
+    /**
+     * A reconnect attempt is about to be made. Runs on the client's dedicated
+     * connection-event thread, one connection event at a time, and must not
+     * block, since that also delays the attempt itself. Reconnection success is
+     * reported through {@link #onReady}, not here.
+     *
+     * @param bot         the bot
+     * @param attempt     the attempt number, counting from 1
+     * @param delayMillis the delay before this attempt actually runs
+     */
+    public void onReconnecting(IRCBot bot, int attempt, long delayMillis) {
+    }
+
+    /**
+     * Reconnection was abandoned after the configured number of attempts. Runs
+     * on the client's dedicated connection-event thread, one connection event
+     * at a time, and must not block.
+     *
+     * @param bot      the bot
+     * @param attempts the number of attempts made before giving up
+     */
+    public void onGaveUp(IRCBot bot, int attempts) {
     }
 }

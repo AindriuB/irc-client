@@ -5,6 +5,7 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.github.aindriub.irc.client.event.ConnectionEvent;
 import io.github.aindriub.irc.client.event.EventHandler;
 import io.github.aindriub.irc.client.message.IRCMessage;
 
@@ -13,6 +14,7 @@ public class ClientConfiguration {
     private Charset charSet;
     private List<EventHandler<String>> eventHandlers;
     private List<EventHandler<IRCMessage>> messageHandlers;
+    private List<EventHandler<ConnectionEvent>> connectionHandlers;
     private List<OutputStream> outputStreams;
     private ConnectionConfiguration connection;
     private RegistrationConfiguration registration;
@@ -24,6 +26,7 @@ public class ClientConfiguration {
     public ClientConfiguration() {
         eventHandlers = new ArrayList<>();
         messageHandlers = new ArrayList<>();
+        connectionHandlers = new ArrayList<>();
         outputStreams = new ArrayList<>();
         connection = new ConnectionConfiguration();
         registration = new RegistrationConfiguration();
@@ -107,5 +110,22 @@ public class ClientConfiguration {
 
     public void setEventHandlers(List<EventHandler<String>> eventHandlers) {
         this.eventHandlers = eventHandlers;
+    }
+
+    /**
+     * Subscribers notified of connection-state changes: a lost connection, a
+     * reconnect attempt, a successful reconnect, or giving up. A deliberate
+     * {@code disconnect()}/shutdown publishes nothing. See
+     * {@link ConnectionEvent} for the delivery thread and ordering guarantee.
+     */
+    public List<EventHandler<ConnectionEvent>> getConnectionHandlers() {
+        return connectionHandlers;
+    }
+
+    /**
+     * Replaces the list returned by {@link #getConnectionHandlers()} wholesale.
+     */
+    public void setConnectionHandlers(List<EventHandler<ConnectionEvent>> connectionHandlers) {
+        this.connectionHandlers = connectionHandlers;
     }
 }
