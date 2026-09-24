@@ -92,4 +92,62 @@ public class ClientConfigurationBuilderTest {
             assertTrue(e.getMessage(), e.getMessage().contains("connectionHandler"));
         }
     }
+
+    @Test
+    public void passwordAcceptsNullAndLeavesItUnset() {
+        ClientConfiguration configuration = new ClientConfigurationBuilder()
+                .host("irc.example.org")
+                .port(6697)
+                .password(null)
+                .build();
+
+        assertEquals(null, configuration.getRegistration().getPassword());
+    }
+
+    @Test
+    public void passwordRejectsWhitespaceWithoutEchoingIt() {
+        try {
+            new ClientConfigurationBuilder().password("PASS oauth:tok123");
+            fail("expected an IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertFalse(e.getMessage(), e.getMessage().contains("tok123"));
+        }
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void passwordRejectsALeadingColon() {
+        new ClientConfigurationBuilder().password(":x");
+    }
+
+    @Test
+    public void saslRejectsAWhitespaceUsernameWithoutEchoingIt() {
+        try {
+            new ClientConfigurationBuilder().sasl("a b", "pw");
+            fail("expected an IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertFalse(e.getMessage(), e.getMessage().contains("a b"));
+        }
+    }
+
+    @Test
+    public void saslRejectsAPasswordWithLineBreaksWithoutEchoingIt() {
+        try {
+            new ClientConfigurationBuilder().sasl("u", "p\r\nQUIT");
+            fail("expected an IllegalArgumentException");
+        } catch (IllegalArgumentException e) {
+            assertFalse(e.getMessage(), e.getMessage().contains("p\r\nQUIT"));
+            assertFalse(e.getMessage(), e.getMessage().contains("QUIT"));
+        }
+    }
+
+    @Test
+    public void saslAcceptsANullUsernameAndASpaceInThePassword() {
+        ClientConfiguration configuration = new ClientConfigurationBuilder()
+                .host("irc.example.org")
+                .port(6697)
+                .sasl(null, "pw with space")
+                .build();
+
+        assertEquals("pw with space", configuration.getRegistration().getSaslPassword());
+    }
 }
