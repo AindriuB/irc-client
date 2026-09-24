@@ -70,13 +70,13 @@ public final class IRCText {
         }
         if (value.startsWith(":")) {
             throw new IllegalArgumentException(
-                    name + " must not start with ':', which would make it a trailing parameter: "
-                            + value);
+                    name + " must not start with ':', which would make it a trailing parameter");
         }
         for (int i = 0; i < value.length(); i++) {
             if (Character.isWhitespace(value.charAt(i))) {
                 throw new IllegalArgumentException(
-                        name + " must not contain whitespace: " + value);
+                        name + " must not contain whitespace (at index " + i + " of "
+                                + value.length() + ")");
             }
         }
         return value;
@@ -100,12 +100,9 @@ public final class IRCText {
             if (c == '\r' || c == '\n' || c == '\0') {
                 throw new IllegalArgumentException(name
                         + " must not contain CR, LF or NUL, which would let it inject a separate "
-                        + "IRC message: " + describe(value));
+                        + "IRC message (" + String.format("U+%04X", (int) c) + " at index " + i
+                        + ")");
             }
         }
-    }
-
-    private static String describe(String value) {
-        return value.replace("\r", "\\r").replace("\n", "\\n").replace("\0", "\\0");
     }
 }
