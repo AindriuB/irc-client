@@ -1,5 +1,6 @@
 package io.github.aindriub.irc.client.bot;
 
+import io.github.aindriub.irc.client.message.IRCFormatting;
 import io.github.aindriub.irc.client.message.IRCMessage;
 
 /**
@@ -52,6 +53,37 @@ public class MessageContext {
 
     public String getText() {
         return text;
+    }
+
+    /**
+     * The text with mIRC formatting codes (bold, colour and the like) stripped,
+     * so command matching and other text processing can ignore how it would have
+     * rendered.
+     */
+    public String getPlainText() {
+        return IRCFormatting.strip(text);
+    }
+
+    /**
+     * True when the text is a CTCP payload, such as {@code \u0001ACTION waves\u0001}.
+     */
+    public boolean isCtcp() {
+        return Ctcp.isCtcp(text);
+    }
+
+    /**
+     * The CTCP command, upper-cased, or null when the text is not CTCP.
+     */
+    public String getCtcpCommand() {
+        return Ctcp.command(text);
+    }
+
+    /**
+     * The CTCP argument, or null when there is none, or when the text is not
+     * CTCP.
+     */
+    public String getCtcpArgument() {
+        return Ctcp.argument(text);
     }
 
     /**

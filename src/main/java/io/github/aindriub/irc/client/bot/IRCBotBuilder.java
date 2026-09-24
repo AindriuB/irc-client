@@ -31,6 +31,7 @@ public class IRCBotBuilder {
     private String commandPrefix = DEFAULT_COMMAND_PREFIX;
     private boolean portSet = false;
     private boolean trackChannelState = true;
+    private boolean respondToCtcp = false;
 
     public IRCBotBuilder host(String host) {
         client.host(host);
@@ -112,6 +113,18 @@ public class IRCBotBuilder {
     }
 
     /**
+     * Answers CTCP requests received in a PRIVMSG: {@code VERSION}, {@code PING}
+     * and {@code TIME}. Off by default, since a bot that never opts in should see
+     * no new traffic on the wire. CTCP {@code ACTION} and anything else unknown
+     * are never answered, and a CTCP arriving as a NOTICE is never answered
+     * either, per RFC 2812 section 3.3.2.
+     */
+    public IRCBotBuilder respondToCtcp(boolean respondToCtcp) {
+        this.respondToCtcp = respondToCtcp;
+        return this;
+    }
+
+    /**
      * The underlying client configuration, for TLS, timeouts, flood protection,
      * reconnection and everything else this builder does not surface.
      */
@@ -128,6 +141,6 @@ public class IRCBotBuilder {
             throw new IllegalStateException("a nick is required");
         }
         return new IRCBot(configuration, channels, listeners, commands, commandPrefix,
-                trackChannelState);
+                trackChannelState, respondToCtcp);
     }
 }

@@ -11,10 +11,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.github.aindriub.irc.client.IRCText;
 import io.github.aindriub.irc.client.command.Away;
 import io.github.aindriub.irc.client.command.Invite;
 import io.github.aindriub.irc.client.command.Join;
 import io.github.aindriub.irc.client.command.Kick;
+import io.github.aindriub.irc.client.command.Messages;
 import io.github.aindriub.irc.client.command.Mode;
 import io.github.aindriub.irc.client.command.Notice;
 import io.github.aindriub.irc.client.command.Part;
@@ -52,6 +54,7 @@ public class IRCBot {
     private final List<BotListener> listeners;
     private final Map<String, CommandHandler> commands;
     private final String commandPrefix;
+    private final boolean respondToCtcp;
 
     /**
      * The nick actually in use, which is not always the configured one: the server
@@ -67,12 +70,13 @@ public class IRCBot {
 
     IRCBot(ClientConfiguration configuration, List<String> channels,
             List<BotListener> listeners, Map<String, CommandHandler> commands,
-            String commandPrefix, boolean trackChannelState) {
+            String commandPrefix, boolean trackChannelState, boolean respondToCtcp) {
         this.configuration = configuration;
         this.channels = new ArrayList<>(channels);
         this.listeners = new CopyOnWriteArrayList<>(listeners);
         this.commands = new LinkedHashMap<>(commands);
         this.commandPrefix = commandPrefix;
+        this.respondToCtcp = respondToCtcp;
         this.nick = configuration.getRegistration().getNick();
         this.channelState = trackChannelState
                 ? new ChannelStateTracker(configuration.getRegistration().getNick()) : null;
@@ -171,6 +175,29 @@ public class IRCBot {
             client.sendCommand(message);
         }
     }
+
+    /**
+     * Sends a CTCP ACTION, the {@code /me} of most clients: {@code * nick text}.
+     * Split on the same terms as {@link #say}, with each line wrapped in its own
+     * complete {@code \u0001ACTION ...\u0001} rather than an action's text being
+     * cut across several lines.
+     */
+    public void action(String target, String text) {
+        String prefix = "PRIVMSG " + target + " :\u0001ACTION ";
+        String suffix = "\u0001";
+        int overhead = IRCText.byteLength(prefix, charset()) + IRCText.byteLength(suffix, charset())
+                + ACTION_PREFIX_ALLOWANCE + 2;
+        for (String piece : Messages.split(text, overhead, charset())) {
+            client.sendCommand(
+                    new PrivMsg(target, Ctcp.build("ACTION", piece.isEmpty() ? null : piece)));
+        }
+    }
+
+    /**
+     * Room left for the {@code :nick!user@host } the server prepends when it
+     * relays the message, mirroring {@code PrivMsg}'s own allowance.
+     */
+    private static final int ACTION_PREFIX_ALLOWANCE = 100;
 
     private java.nio.charset.Charset charset() {
         return configuration.getCharSet();
@@ -277,6 +304,7 @@ public class IRCBot {
             }
             final MessageContext context = new MessageContext(IRCBot.this, raw, target, sender,
                     text);
+            respondToCtcpIfEnabled(context);
             dispatchCommand(context);
             for (final BotListener listener : listeners) {
                 safely(listener, "onMessage", new Runnable() {
@@ -386,11 +414,36 @@ public class IRCBot {
         return sender != null && sender.equalsIgnoreCase(nick);
     }
 
+    /**
+     * The reply text for a CTCP VERSION request. Not configurable: bots wanting a
+     * different string can answer VERSION themselves via a {@link BotListener}.
+     */
+    private static final String CTCP_VERSION_REPLY = "irc-client (https://github.com/aindriub/irc-client)";
+
+    private void respondToCtcpIfEnabled(MessageContext context) {
+        if (!respondToCtcp || !context.isCtcp()) {
+            return;
+        }
+        String command = context.getCtcpCommand();
+        String reply;
+        if ("VERSION".equals(command)) {
+            reply = Ctcp.build("VERSION", CTCP_VERSION_REPLY);
+        } else if ("PING".equals(command)) {
+            reply = Ctcp.build("PING", context.getCtcpArgument());
+        } else if ("TIME".equals(command)) {
+            reply = Ctcp.build("TIME", java.time.ZonedDateTime.now().toString());
+        } else {
+            // ACTION and anything unknown: no reply.
+            return;
+        }
+        notice(context.getSender(), reply);
+    }
+
     private void dispatchCommand(MessageContext context) {
         if (commands.isEmpty()) {
             return;
         }
-        String text = context.getText().trim();
+        String text = context.getPlainText().trim();
         if (!text.startsWith(commandPrefix)) {
             return;
         }

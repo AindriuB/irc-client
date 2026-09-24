@@ -663,6 +663,240 @@ public class IRCBotTest {
         assertTrue(server.awaitLine("PRIVMSG #chan :ran", before, TIMEOUT));
     }
 
+    @Test
+    public void messageContextExposesCtcpAccessors() throws Exception {
+        final List<MessageContext> captured = new ArrayList<>();
+        bot = builder().listener(new BotListener() {
+            @Override
+            public void onMessage(MessageContext context) {
+                captured.add(context);
+                events.add("captured " + captured.size());
+            }
+        }).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.push(":someone!u@h PRIVMSG bot :\u0001ACTION waves\u0001");
+        assertTrue(awaitEvent("captured 1"));
+        MessageContext action = captured.get(0);
+        assertTrue(action.isCtcp());
+        assertEquals("ACTION", action.getCtcpCommand());
+        assertEquals("waves", action.getCtcpArgument());
+
+        server.push(":someone!u@h PRIVMSG bot :just chatting");
+        assertTrue(awaitEvent("captured 2"));
+        MessageContext plain = captured.get(1);
+        assertFalse(plain.isCtcp());
+        assertNull(plain.getCtcpCommand());
+        assertNull(plain.getCtcpArgument());
+    }
+
+    @Test
+    public void messageContextExposesPlainTextWithGetTextUnchanged() throws Exception {
+        final List<MessageContext> captured = new ArrayList<>();
+        bot = builder().listener(new BotListener() {
+            @Override
+            public void onMessage(MessageContext context) {
+                captured.add(context);
+                events.add("captured");
+            }
+        }).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.push(":someone!u@h PRIVMSG #chan :\u0002bold\u0002 text");
+        assertTrue(awaitEvent("captured"));
+
+        MessageContext context = captured.get(0);
+        assertEquals("\u0002bold\u0002 text", context.getText());
+        assertEquals("bold text", context.getPlainText());
+    }
+
+    @Test
+    public void actionSendsACtcpAction() throws Exception {
+        bot = builder().build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        bot.action("#chan", "waves");
+
+        assertTrue(server.awaitLine("PRIVMSG #chan :\u0001ACTION waves\u0001", before, TIMEOUT));
+    }
+
+    @Test
+    public void actionSplitsLongTextIntoCompleteActionsPerLine() throws Exception {
+        bot = builder().build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        StringBuilder longText = new StringBuilder();
+        for (int i = 0; i < 60; i++) {
+            longText.append("the quick brown fox jumps over the lazy dog ");
+        }
+        bot.action("#chan", longText.toString().trim());
+
+        assertTrue(server.awaitLine("PRIVMSG #chan :\u0001ACTION the quick", before, TIMEOUT));
+        Thread.sleep(300);
+        List<String> sent = new ArrayList<>();
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            if (line.startsWith("PRIVMSG #chan :")) {
+                sent.add(line);
+                assertTrue("each line is a complete action",
+                        line.startsWith("PRIVMSG #chan :\u0001ACTION ") && line.endsWith("\u0001"));
+                assertTrue("a sent line was " + line.length() + " chars, over the limit",
+                        line.getBytes("UTF-8").length + 2 <= 512);
+            }
+        }
+        assertTrue("expected several messages, got " + sent.size(), sent.size() > 1);
+    }
+
+    @Test
+    public void respondsToCtcpVersionPingAndTimeWhenEnabled() throws Exception {
+        bot = builder().respondToCtcp(true).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":someone!u@h PRIVMSG bot :\u0001VERSION\u0001");
+        server.push(":someone!u@h PRIVMSG bot :\u0001PING 123\u0001");
+        server.push(":someone!u@h PRIVMSG bot :\u0001TIME\u0001");
+
+        assertTrue(server.awaitLine("NOTICE someone :\u0001PING 123\u0001", before, TIMEOUT));
+        boolean sawVersion = false;
+        boolean sawTime = false;
+        Thread.sleep(200);
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            if (line.startsWith("NOTICE someone :\u0001VERSION ") && line.endsWith("\u0001")) {
+                assertTrue("non-empty version", line.length() > "NOTICE someone :\u0001VERSION \u0001".length());
+                sawVersion = true;
+            }
+            if (line.startsWith("NOTICE someone :\u0001TIME ") && line.endsWith("\u0001")) {
+                assertTrue("non-empty time", line.length() > "NOTICE someone :\u0001TIME \u0001".length());
+                sawTime = true;
+            }
+        }
+        assertTrue(sawVersion);
+        assertTrue(sawTime);
+    }
+
+    @Test
+    public void doesNotRespondToCtcpByDefault() throws Exception {
+        bot = builder().build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":someone!u@h PRIVMSG bot :\u0001VERSION\u0001");
+        Thread.sleep(200);
+
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("no CTCP reply expected", line.startsWith("NOTICE"));
+        }
+    }
+
+    @Test
+    public void doesNotRespondToCtcpReceivedAsNotice() throws Exception {
+        bot = builder().respondToCtcp(true).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":someone!u@h NOTICE bot :\u0001VERSION\u0001");
+        Thread.sleep(200);
+
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("a CTCP NOTICE must never be answered", line.startsWith("NOTICE"));
+        }
+    }
+
+    @Test
+    public void doesNotRespondToCtcpFromSelf() throws Exception {
+        bot = builder().respondToCtcp(true).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":bot!u@h PRIVMSG bot :\u0001VERSION\u0001");
+        Thread.sleep(200);
+
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("must not answer its own CTCP", line.startsWith("NOTICE"));
+        }
+    }
+
+    @Test
+    public void doesNotRespondToActionOrUnknownCtcp() throws Exception {
+        bot = builder().respondToCtcp(true).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":someone!u@h PRIVMSG bot :\u0001ACTION waves\u0001");
+        server.push(":someone!u@h PRIVMSG bot :\u0001UNKNOWNTHING\u0001");
+        Thread.sleep(200);
+
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("no reply for ACTION or unknown CTCP", line.startsWith("NOTICE"));
+        }
+    }
+
+    @Test
+    public void ctcpPrivmsgsStillReachOnMessageWithTextUnchangedResponderOff() throws Exception {
+        bot = builder().listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.push(":someone!u@h PRIVMSG #chan :\u0001VERSION\u0001");
+
+        assertTrue(awaitEvent("message #chan someone \u0001VERSION\u0001"));
+    }
+
+    @Test
+    public void ctcpPrivmsgsStillReachOnMessageWithTextUnchangedResponderOn() throws Exception {
+        bot = builder().respondToCtcp(true).listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.push(":someone!u@h PRIVMSG #chan :\u0001VERSION\u0001");
+
+        assertTrue(awaitEvent("message #chan someone \u0001VERSION\u0001"));
+    }
+
+    @Test
+    public void dispatchesCommandsAfterStrippingFormatting() throws Exception {
+        bot = builder().command("!hello", new CommandHandler() {
+            @Override
+            public void handle(MessageContext context, List<String> args) {
+                context.reply("hello " + args);
+            }
+        }).listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":someone!u@h PRIVMSG #chan :\u0002!hello\u0002 world");
+
+        assertTrue(server.awaitLine("PRIVMSG #chan :hello [world]", before, TIMEOUT));
+    }
+
+    @Test
+    public void anActionDoesNotDispatchAsACommand() throws Exception {
+        bot = builder().command("!hello", echoCommand()).listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":someone!u@h PRIVMSG #chan :\u0001ACTION !hello\u0001");
+        assertTrue(awaitEvent("message #chan someone \u0001ACTION !hello\u0001"));
+
+        Thread.sleep(150);
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("no command should have run: " + line, line.contains(":ran"));
+        }
+    }
+
     private IRCBotBuilder builder() {
         IRCBotBuilder builder = IRCBot.builder().host("127.0.0.1").port(server.getPort())
                 .nick("bot");
