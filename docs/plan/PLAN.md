@@ -43,18 +43,22 @@ stay there.
 - `CaseMapping` support: channel/nick folding now follows the server's
   advertised `CASEMAPPING`, via `ServerSupport.getCaseMapping()`.
 - `IRCFormatting.strip()` removes mIRC formatting/colour codes from text.
-- CTCP support: `MessageContext` exposes CTCP accessors and `action()`, and
-  `IRCBot` has an opt-in VERSION/PING/TIME responder.
+- CTCP support: `MessageContext` exposes `isCtcp`/`getCtcpCommand`/
+  `getCtcpArgument` and `getPlainText`; `IRCBot.action()` sends /me;
+  `IRCBotBuilder.respondToCtcp(true)` enables a VERSION/PING/TIME responder
+  (off by default).
 - A bot that is kicked drops the channel from its own state; `BotListener`
-  gained `onKick`, and an opt-in auto-rejoin-after-kick.
+  gained `onKick`, and `IRCBotBuilder.autoRejoinAfterKick(true)` enables
+  auto-rejoin (off by default).
 - `BotListener` gained connection-state events — `onDisconnected`,
   `onReconnecting`, `onGaveUp` — so a bot can tell it is reconnecting instead
   of silently retrying forever. `ClientConfigurationBuilder.connectionListener`
   configures the handler.
-- Behaviour change: the `onReconnected` hook and `IRCBot`'s `onReady` now run
-  on a dedicated connection-event thread rather than a channel loop. Slow
-  work there (e.g. several flood-controlled sends) delays later connection
-  events for that client.
+- Behaviour change: after a reconnect, the protected `onReconnected` hook and
+  `IRCBot`'s `onReady` run on a dedicated connection-event thread rather than
+  a channel event loop. On the first connect nothing changes. Slow work there
+  (e.g. several flood-controlled sends) delays later connection events for
+  that client.
 - A write the outbound rate limiter refuses is now logged at WARN
   (rate-limited, no payload) instead of silently dropped.
 - #39: a TLS handshake failure now quotes what the server said.
