@@ -603,6 +603,212 @@ public class IRCBotTest {
     }
 
     @Test
+    public void reportsKicksWithReasonAndByWhenPresent() throws Exception {
+        bot = builder().listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.push(":someone!u@h KICK #chan other :behave");
+
+        assertTrue(awaitEvent("kick #chan other someone behave"));
+    }
+
+    @Test
+    public void reportsKicksWithNoReasonAsNull() throws Exception {
+        bot = builder().listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.push(":someone!u@h KICK #chan other");
+
+        assertTrue(awaitEvent("kick #chan other someone null"));
+    }
+
+    @Test
+    public void reportsAServerKickWithNoByAsNull() throws Exception {
+        bot = builder().listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.push(":irc.example.org KICK #chan other :spam");
+
+        assertTrue(awaitEvent("kick #chan other null spam"));
+    }
+
+    @Test
+    public void aFailingOnKickListenerDoesNotStopTheOthersOrTheConnection() throws Exception {
+        bot = builder()
+                .listener(new BotListener() {
+                    @Override
+                    public void onKick(IRCBot bot, String channel, String kicked, String by,
+                            String reason) {
+                        throw new IllegalStateException("listener is broken");
+                    }
+                })
+                .listener(recording())
+                .build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        server.push(":someone!u@h KICK #chan other :behave");
+
+        assertTrue(awaitEvent("kick #chan other someone behave"));
+        assertTrue("a broken onKick listener must not drop the connection", bot.isRunning());
+    }
+
+    @Test
+    public void autoRejoinsAfterBeingKickedWhenEnabled() throws Exception {
+        bot = builder().autoRejoinAfterKick(true).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":someone!u@h KICK #chan bot :out");
+
+        assertTrue(server.awaitLine("JOIN #chan", before, TIMEOUT));
+        long deadline = System.currentTimeMillis() + TIMEOUT;
+        while (!bot.getClient().getJoinedChannels().contains("#chan")
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue(bot.getClient().getJoinedChannels().contains("#chan"));
+    }
+
+    @Test
+    public void aChannelRejoinedAfterAKickSurvivesAReconnect() throws Exception {
+        IRCBotBuilder builder = IRCBot.builder().host("127.0.0.1").port(server.getPort())
+                .nick("bot").autoRejoinAfterKick(true);
+        builder.client().secure(false).reconnect(true).reconnectBackoff(30, 60, 0)
+                .registrationTimeout(3000);
+        bot = builder.build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":someone!u@h KICK #chan bot :out");
+        assertTrue(server.awaitLine("JOIN #chan", before, TIMEOUT));
+
+        int beforeReconnect = server.receivedCount();
+        server.dropConnection();
+
+        assertTrue("the rejoin after a kick is tracked, so a reconnect rejoins it too",
+                server.awaitLine("JOIN #chan", beforeReconnect, TIMEOUT));
+    }
+
+    @Test
+    public void doesNotRejoinWhenSomeoneElseIsKicked() throws Exception {
+        bot = builder().autoRejoinAfterKick(true).listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":someone!u@h KICK #chan other :out");
+        // Messages from one connection are handled in the order they arrive, so
+        // waiting for this marker's effect proves the KICK above was already
+        // fully handled, including any rejoin decision.
+        server.push(":marker!u@h PRIVMSG #chan :fence");
+
+        assertTrue(awaitEvent("message #chan marker fence"));
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("no rejoin for someone else's kick: " + line, line.startsWith("JOIN"));
+        }
+    }
+
+    @Test
+    public void doesNotRejoinAfterKickWhenDisabled() throws Exception {
+        bot = builder().listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        int before = server.receivedCount();
+
+        server.push(":someone!u@h KICK #chan bot :out");
+        server.push(":marker!u@h PRIVMSG #chan :fence");
+
+        assertTrue(awaitEvent("message #chan marker fence"));
+        for (String line : server.getReceived().subList(before, server.receivedCount())) {
+            assertFalse("no rejoin when disabled: " + line, line.startsWith("JOIN"));
+        }
+    }
+
+    @Test
+    public void isFromSelfUsesTheServersCaseMapping() throws Exception {
+        bot = builder().listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        renameSelfTo("bot{1}");
+
+        // Default RFC1459: [ ] fold to { }, so Bot[1] and bot{1} are the same nick.
+        server.push(":Bot[1]!u@h PRIVMSG #chan :self under rfc1459");
+        server.push(":someone!u@h PRIVMSG #chan :marker one");
+        assertTrue(awaitEvent("message #chan someone marker one"));
+        for (String event : events) {
+            assertFalse("rfc1459 folds Bot[1] onto bot{1}: " + event,
+                    event.contains("self under rfc1459"));
+        }
+    }
+
+    @Test
+    public void isFromSelfDeliversUnderAsciiCaseMapping() throws Exception {
+        bot = builder().listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        renameSelfTo("bot{1}");
+        server.push(":stub 005 bot{1} CASEMAPPING=ascii :are supported by this server");
+        long deadline = System.currentTimeMillis() + TIMEOUT;
+        while (bot.getClient().getCaseMapping() != io.github.aindriub.irc.client.state.CaseMapping.ASCII
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+
+        // Under plain ascii folding, Bot[1] no longer maps onto bot{1}: not self.
+        server.push(":Bot[1]!u@h PRIVMSG #chan :not self under ascii");
+
+        assertTrue(awaitEvent("message #chan Bot[1] not self under ascii"));
+    }
+
+    @Test
+    public void selfChecksWorkWithChannelStateTrackingOff() throws Exception {
+        bot = builder().trackChannelState(false).autoRejoinAfterKick(true)
+                .listener(recording()).build();
+        bot.start();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+        renameSelfTo("bot{1}");
+        int before = server.receivedCount();
+
+        // Self under default rfc1459 folding: ignored as our own message.
+        server.push(":Bot[1]!u@h PRIVMSG #chan :self message");
+        // Self kick: rejoin expected even with tracking off.
+        server.push(":someone!u@h KICK #chan bot{1} :out");
+
+        assertTrue(server.awaitLine("JOIN #chan", before, TIMEOUT));
+        long deadline = System.currentTimeMillis() + TIMEOUT;
+        while (!bot.getClient().getJoinedChannels().contains("#chan")
+                && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue("rejoin should register with the client even with tracking off",
+                bot.getClient().getJoinedChannels().contains("#chan"));
+        for (String event : events) {
+            assertFalse("still self under rfc1459 with tracking off",
+                    event.contains("self message"));
+        }
+    }
+
+    /**
+     * Renames the bot's tracked self-nick without going through the server's
+     * registration flow, which the stub always confirms as {@code bot}. Mirrors
+     * {@code BasicIRCClientTest}'s approach for the same reason.
+     */
+    private void renameSelfTo(String newNick) throws IOException, InterruptedException {
+        server.push(":" + bot.getNick() + "!u@h NICK " + newNick);
+        long deadline = System.currentTimeMillis() + TIMEOUT;
+        while (!newNick.equals(bot.getNick()) && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertEquals(newNick, bot.getNick());
+    }
+
+    @Test
     public void requiresANick() {
         try {
             IRCBot.builder().host("127.0.0.1").port(6667).build();
@@ -960,8 +1166,12 @@ public class IRCBotTest {
     }
 
     private IRCBotBuilder builder() {
+        return builder("bot");
+    }
+
+    private IRCBotBuilder builder(String nick) {
         IRCBotBuilder builder = IRCBot.builder().host("127.0.0.1").port(server.getPort())
-                .nick("bot");
+                .nick(nick);
         builder.client().secure(false).reconnect(false).registrationTimeout(3000);
         return builder;
     }
@@ -1002,6 +1212,12 @@ public class IRCBotTest {
             @Override
             public void onQuit(IRCBot bot, String nick, String reason) {
                 events.add("quit " + nick + " " + reason);
+            }
+
+            @Override
+            public void onKick(IRCBot bot, String channel, String kicked, String by,
+                    String reason) {
+                events.add("kick " + channel + " " + kicked + " " + by + " " + reason);
             }
 
             @Override

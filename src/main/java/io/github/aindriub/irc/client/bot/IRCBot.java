@@ -55,6 +55,7 @@ public class IRCBot {
     private final Map<String, CommandHandler> commands;
     private final String commandPrefix;
     private final boolean respondToCtcp;
+    private final boolean autoRejoinAfterKick;
 
     /**
      * The nick actually in use, which is not always the configured one: the server
@@ -70,13 +71,15 @@ public class IRCBot {
 
     IRCBot(ClientConfiguration configuration, List<String> channels,
             List<BotListener> listeners, Map<String, CommandHandler> commands,
-            String commandPrefix, boolean trackChannelState, boolean respondToCtcp) {
+            String commandPrefix, boolean trackChannelState, boolean respondToCtcp,
+            boolean autoRejoinAfterKick) {
         this.configuration = configuration;
         this.channels = new ArrayList<>(channels);
         this.listeners = new CopyOnWriteArrayList<>(listeners);
         this.commands = new LinkedHashMap<>(commands);
         this.commandPrefix = commandPrefix;
         this.respondToCtcp = respondToCtcp;
+        this.autoRejoinAfterKick = autoRejoinAfterKick;
         this.nick = configuration.getRegistration().getNick();
         this.channelState = trackChannelState
                 ? new ChannelStateTracker(configuration.getRegistration().getNick()) : null;
@@ -374,6 +377,27 @@ public class IRCBot {
         }
 
         @Override
+        protected void onKick(final String channel, final String kicked, final String by,
+                IRCMessage raw) {
+            final String reason = raw.getParam(2);
+            for (final BotListener listener : listeners) {
+                safely(listener, "onKick", new Runnable() {
+                    @Override
+                    public void run() {
+                        listener.onKick(IRCBot.this, channel, kicked, by, reason);
+                    }
+                });
+            }
+            if (autoRejoinAfterKick && isFromSelf(kicked)) {
+                try {
+                    join(channel);
+                } catch (RuntimeException e) {
+                    LOGGER.warn("Failed to rejoin {} after being kicked", channel, e);
+                }
+            }
+        }
+
+        @Override
         protected void onNickChange(String oldNick, String newNick, IRCMessage raw) {
             if (isFromSelf(oldNick)) {
                 nick = newNick;
@@ -415,7 +439,7 @@ public class IRCBot {
     }
 
     private boolean isFromSelf(String sender) {
-        return sender != null && sender.equalsIgnoreCase(nick);
+        return client.getCaseMapping().equals(sender, nick);
     }
 
     /**
