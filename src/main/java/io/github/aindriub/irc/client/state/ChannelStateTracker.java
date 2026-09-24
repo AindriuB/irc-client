@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -296,21 +295,21 @@ public class ChannelStateTracker implements EventHandler<IRCMessage> {
         if (existing != null) {
             return existing;
         }
-        ChannelState created = new ChannelState(name);
+        ChannelState created = new ChannelState(name, serverSupport.getCaseMapping());
         ChannelState raced = channels.putIfAbsent(key(name), created);
         return raced == null ? created : raced;
     }
 
     private boolean isSelf(String nick) {
         String self = selfNick;
-        return self != null && self.equalsIgnoreCase(nick);
+        return self != null && serverSupport.getCaseMapping().equals(self, nick);
     }
 
     private static String nullToEmpty(String value) {
         return value == null ? "" : value;
     }
 
-    private static String key(String name) {
-        return name.toLowerCase(Locale.ROOT);
+    private String key(String name) {
+        return serverSupport.getCaseMapping().fold(name);
     }
 }

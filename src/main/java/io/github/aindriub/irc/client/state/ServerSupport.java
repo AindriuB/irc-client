@@ -138,6 +138,15 @@ public final class ServerSupport {
         return get(key) != null;
     }
 
+    /**
+     * How this server folds case in nicks and channel names, from its ISUPPORT
+     * {@code CASEMAPPING} token. RFC1459 is the RFC 2812 default, used before any
+     * ISUPPORT line arrives and when the server never sends the token at all.
+     */
+    public CaseMapping getCaseMapping() {
+        return CaseMapping.forToken(get("CASEMAPPING"));
+    }
+
     public Map<String, String> getTokens() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(tokens));
     }

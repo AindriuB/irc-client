@@ -113,6 +113,34 @@ public class ServerSupportTest {
     }
 
     @Test
+    public void caseMappingDefaultsToRfc1459UntilIsupportArrives() {
+        ServerSupport support = new ServerSupport();
+
+        assertEquals(CaseMapping.RFC1459, support.getCaseMapping());
+    }
+
+    @Test
+    public void caseMappingDefaultsToRfc1459WhenTheTokenIsAbsent() {
+        ServerSupport support = supporting("NETWORK=Example");
+
+        assertEquals(CaseMapping.RFC1459, support.getCaseMapping());
+    }
+
+    @Test
+    public void caseMappingReadsTheNamedMapping() {
+        assertEquals(CaseMapping.ASCII, supporting("CASEMAPPING=ascii").getCaseMapping());
+        assertEquals(CaseMapping.STRICT_RFC1459,
+                supporting("CASEMAPPING=strict-rfc1459").getCaseMapping());
+    }
+
+    @Test
+    public void caseMappingFallsBackToAsciiForAnUnknownToken() {
+        ServerSupport support = supporting("CASEMAPPING=rfc8265");
+
+        assertEquals(CaseMapping.ASCII, support.getCaseMapping());
+    }
+
+    @Test
     public void describesItself() {
         assertTrue(supporting("NETWORK=Example").toString().contains("NETWORK"));
     }
