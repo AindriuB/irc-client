@@ -20,4 +20,4 @@ no row is one `planner` cannot find, and will re-plan.
 
 | Date | Task IDs | Summary | Heading (grep this exact string) |
 |---|---|---|---|
-_No entries yet._
+| 2026-09-24 | 01, 02, 03 | CaseMapping, IRCFormatting.strip, Ctcp codec merged to master (bot-facade pass wave 1) | ## 2026-09-24 — CaseMapping, IRCFormatting.strip and the Ctcp codec land |

@@ -39,8 +39,9 @@ it has caught three already.
 
 ## Errors
 
-No silent catch. Every thrown exception is or extends `IRCClientException`, so
-a caller can catch one type.
+No silent catch. Bad arguments throw `IllegalArgumentException` (`IRCText` and
+`command/*`); everything else thrown is or extends `IRCClientException`, so a
+caller can catch one type for anything past argument validation.
 
 Messages name the value and the limit rather than the fact of a failure:
 "message is 540 bytes including CRLF, over the 512 byte limit" rather than "too

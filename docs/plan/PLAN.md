@@ -30,12 +30,18 @@ patch.
 Cut it when the list stops growing, or sooner if something on it is bad enough
 that somebody is waiting. Steps in `RELEASING.md`.
 
-## Next
-
-### Decide what else belongs in the bot facade
-The split between "the low level refuses, the facade helps" is deliberate but
-only applied to message length so far. Worth a pass over the facade asking what
-else a bot author is currently expected to get right alone.
+### Bot-facade pass for 1.2.0
+The split between "the low level refuses, the facade helps" was deliberate but
+only applied to message length. Decided what else belongs there: a bot that
+gets kicked should not sit in a channel it thinks it is in, CTCP and formatted
+text should not leak into MessageContext as raw control bytes, and a bot
+should be able to tell it is reconnecting rather than silently retrying
+forever. Landed so far: `CaseMapping` and `ServerSupport.getCaseMapping()`
+(task 01), `IRCFormatting.strip()` (task 02), the package-private `Ctcp`
+codec (task 03). In flight: BasicIRCClient drops a channel on KICK (04),
+CTCP/plain text on the bot facade (05), `onKick`/auto-rejoin/CASEMAPPING-aware
+self checks on the bot (06), and connection-state events — DISCONNECTED /
+RECONNECTING / RECONNECTED / GAVE_UP — on `BotListener` (07).
 
 ## Someday
 
