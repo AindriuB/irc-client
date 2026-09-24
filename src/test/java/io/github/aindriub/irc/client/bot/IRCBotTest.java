@@ -537,8 +537,10 @@ public class IRCBotTest {
         assertTrue(awaitEvent("ready"));
         events.clear();
 
+        // stop() blocks until every in-flight connection-state decision has been
+        // handled (see AbstractClient.disconnect()), so nothing more can arrive
+        // for this bot once it returns; no sleep needed to prove a negative.
         bot.stop();
-        Thread.sleep(300);
 
         assertFalse("a deliberate stop must not report a disconnection",
                 events.contains("disconnected"));

@@ -55,19 +55,22 @@ public abstract class BotListener {
     }
 
     /**
-     * The connection was lost unexpectedly. Runs on the event loop and must not
-     * block. Fires only when the connection is actually lost, never for a
-     * deliberate {@code disconnect()}/shutdown, since the application already
-     * knows it asked for that. If reconnection is enabled, a successful
-     * reconnect is still reported through {@link #onReady}, not here.
+     * The connection was lost unexpectedly. Runs on the client's dedicated
+     * connection-event thread, one connection event at a time and never
+     * concurrently with another, and must not block, since that also delays the
+     * reconnect attempt that follows. Fires only when the connection is actually
+     * lost, never for a deliberate {@code disconnect()}/shutdown, since the
+     * application already knows it asked for that. If reconnection is enabled, a
+     * successful reconnect is still reported through {@link #onReady}, not here.
      */
     public void onDisconnected(IRCBot bot) {
     }
 
     /**
-     * A reconnect attempt is about to be made. Runs on the event loop and must
-     * not block. Reconnection success is reported through {@link #onReady},
-     * not here.
+     * A reconnect attempt is about to be made. Runs on the client's dedicated
+     * connection-event thread, one connection event at a time, and must not
+     * block, since that also delays the attempt itself. Reconnection success is
+     * reported through {@link #onReady}, not here.
      *
      * @param bot         the bot
      * @param attempt     the attempt number, counting from 1
@@ -78,7 +81,8 @@ public abstract class BotListener {
 
     /**
      * Reconnection was abandoned after the configured number of attempts. Runs
-     * on the event loop and must not block.
+     * on the client's dedicated connection-event thread, one connection event
+     * at a time, and must not block.
      *
      * @param bot      the bot
      * @param attempts the number of attempts made before giving up

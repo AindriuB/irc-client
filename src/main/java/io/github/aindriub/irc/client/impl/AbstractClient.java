@@ -8,6 +8,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 
 import javax.net.ssl.SSLException;
@@ -45,6 +46,9 @@ import io.netty.util.concurrent.GenericFutureListener;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.util.concurrent.DefaultEventExecutor;
+import io.netty.util.concurrent.EventExecutor;
+import io.netty.util.concurrent.Future;
 import io.netty.handler.codec.LineBasedFrameDecoder;
 import io.netty.handler.codec.string.LineEncoder;
 import io.netty.handler.codec.string.LineSeparator;
@@ -64,6 +68,12 @@ public abstract class AbstractClient implements Client {
      * well past that, so allow some headroom.
      */
     private static final int MAX_FRAME_SIZE = 2048;
+
+    /** How long disconnect() waits for in-flight connection-state work to drain. */
+    private static final long CONNECTION_EVENT_LOOP_SHUTDOWN_TIMEOUT_MILLIS = 5000;
+
+    /** Minimum gap between two "refused write" WARN log lines. */
+    private static final long REFUSED_WRITE_LOG_INTERVAL_MILLIS = 10_000;
 
     private final SslContext sslContext;
     protected Bootstrap bootstrap;
@@ -102,6 +112,25 @@ public abstract class AbstractClient implements Client {
      * attempt inside it, so the short end of the backoff cannot ever escape.
      */
     private final AtomicBoolean serverRefused = new AtomicBoolean();
+
+    /**
+     * Runs every connection-state decision (a loss, scheduling the next attempt,
+     * an attempt's result) and every call to {@link #publishConnectionEvent}. A
+     * single thread, dedicated to this and never shared with a channel's own event
+     * loop, so {@link io.github.aindriub.irc.client.event.ConnectionEvent}s reach
+     * connection handlers strictly in the order they happened and one at a time,
+     * never two at once and never out of order, regardless of which Netty event
+     * loop happened to run the underlying I/O. A handler that blocks here delays
+     * not just later events but the reconnect attempts themselves, since scheduling
+     * the next attempt happens on this same thread.
+     */
+    private final EventExecutor connectionEventLoop = new DefaultEventExecutor();
+
+    /** Refused writes from the event loop since the last WARN about them. */
+    private final AtomicInteger refusedWritesSinceLastLog = new AtomicInteger();
+
+    /** When the last "refused write" WARN was logged, 0 before the first one. */
+    private final AtomicLong lastRefusedWriteLogAt = new AtomicLong();
 
     public AbstractClient(final ClientConfiguration configuration) {
         this.configuration = configuration;
@@ -295,8 +324,7 @@ public abstract class AbstractClient implements Client {
                 @Override
                 public void operationComplete(ChannelFuture future) {
                     if (!future.isSuccess()) {
-                        LOGGER.warn("Send from the event loop was refused: {}",
-                                String.valueOf(future.cause()));
+                        logRefusedWrite(future.cause());
                     }
                 }
             });
@@ -320,6 +348,29 @@ public abstract class AbstractClient implements Client {
         return channelFuture != null && channelFuture.channel().isActive();
     }
 
+    /**
+     * Logs a write refused by the pipeline (for example
+     * {@code OutboundRateLimiter} rejecting a full queue) at WARN. A remote peer
+     * can drive this by flooding, so it is throttled to the first refusal and then
+     * at most one WARN per {@link #REFUSED_WRITE_LOG_INTERVAL_MILLIS}, reporting
+     * how many were refused since the last report. Never logs the payload.
+     */
+    private void logRefusedWrite(Throwable cause) {
+        refusedWritesSinceLastLog.incrementAndGet();
+        long now = System.currentTimeMillis();
+        long last = lastRefusedWriteLogAt.get();
+        if (last != 0 && now - last < REFUSED_WRITE_LOG_INTERVAL_MILLIS) {
+            return;
+        }
+        if (!lastRefusedWriteLogAt.compareAndSet(last, now)) {
+            // Another thread just logged; let it own this report.
+            return;
+        }
+        int refused = refusedWritesSinceLastLog.getAndSet(0);
+        LOGGER.warn("{} send(s) from the event loop were refused since the last report "
+                + "(most recent cause: {})", refused, String.valueOf(cause));
+    }
+
     @Override
     public void disconnect() {
         synchronized (lifecycleLock) {
@@ -339,15 +390,54 @@ public abstract class AbstractClient implements Client {
                 throw new IRCClientException("Interrupted while closing the connection", e);
             } finally {
                 workerGroup.shutdownGracefully();
+                awaitConnectionEventLoopShutdown();
             }
         }
     }
 
     /**
-     * Called when a connection goes away for any reason. Reconnects with backoff
-     * unless the disconnection was deliberate or reconnection is switched off.
+     * Waits for the connection-event loop to drain and stop, so that once
+     * disconnect() returns, no further {@link io.github.aindriub.irc.client.event.ConnectionEvent}
+     * can arrive for this client. Skipped when called from that very loop (for
+     * example a connection handler that calls {@code disconnect()} on itself),
+     * since waiting there would deadlock forever.
+     */
+    private void awaitConnectionEventLoopShutdown() {
+        Future<?> shutdownFuture = connectionEventLoop.shutdownGracefully(
+                0, CONNECTION_EVENT_LOOP_SHUTDOWN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        if (connectionEventLoop.inEventLoop()) {
+            return;
+        }
+        try {
+            shutdownFuture.await(CONNECTION_EVENT_LOOP_SHUTDOWN_TIMEOUT_MILLIS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Called when a connection goes away for any reason, on whichever Netty event
+     * loop the dead channel happened to be using. Everything this triggers -
+     * deciding whether the loss is fresh, scheduling the next attempt, handling
+     * that attempt's result, and publishing every
+     * {@link io.github.aindriub.irc.client.event.ConnectionEvent} - is handed off
+     * to {@link #connectionEventLoop} so that it all happens on one thread, in the
+     * order it actually occurred.
      */
     private void onConnectionLost() {
+        connectionEventLoop.execute(new Runnable() {
+            @Override
+            public void run() {
+                handleConnectionLost();
+            }
+        });
+    }
+
+    /**
+     * Runs on {@link #connectionEventLoop}. Reconnects with backoff unless the
+     * disconnection was deliberate or reconnection is switched off.
+     */
+    private void handleConnectionLost() {
         if (shutdown) {
             return;
         }
@@ -370,6 +460,15 @@ public abstract class AbstractClient implements Client {
         scheduleReconnect();
     }
 
+    /**
+     * Runs on {@link #connectionEventLoop}. Schedules the next attempt on
+     * {@link #workerGroup} and, once scheduling has actually succeeded, publishes
+     * RECONNECTING on this same thread before returning - so that by the time a
+     * caller's {@code scheduleReconnect()} call for the following attempt could
+     * possibly run (which can only happen after this method returns, since both
+     * run on the same single thread), this attempt's event has already reached
+     * every handler.
+     */
     private void scheduleReconnect() {
         ReconnectConfiguration reconnect = configuration.getReconnect();
         final int attempt = reconnectAttempts.incrementAndGet();
@@ -392,7 +491,15 @@ public abstract class AbstractClient implements Client {
             workerGroup.schedule(new Runnable() {
                 @Override
                 public void run() {
-                    tryReconnect(attempt);
+                    // Back onto connectionEventLoop: this runs on a workerGroup
+                    // event loop thread, and tryReconnect's own callbacks must join
+                    // the same serial ordering as everything else.
+                    connectionEventLoop.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            tryReconnect(attempt);
+                        }
+                    });
                 }
             }, delay, TimeUnit.MILLISECONDS);
         } catch (RejectedExecutionException e) {
@@ -400,12 +507,18 @@ public abstract class AbstractClient implements Client {
             LOGGER.debug("Not reconnecting, the event loop is shutting down");
             return;
         }
+        if (shutdown) {
+            // A disconnect() landed in the small window between the check above and
+            // here; the task just scheduled will find shutdown set and no-op.
+            return;
+        }
         publishConnectionEvent(ConnectionEvent.reconnecting(attempt, delay));
     }
 
     /**
-     * Connects without blocking: this runs on an event loop thread, so waiting for
-     * the handshake here would stop the handshake from ever completing.
+     * Runs on {@link #connectionEventLoop}. Starts the actual connect attempt;
+     * its result is marshalled back onto this same loop rather than handled on
+     * whichever Netty event loop the new channel ends up on.
      */
     private void tryReconnect(final int attempt) {
         if (shutdown) {
@@ -415,21 +528,32 @@ public abstract class AbstractClient implements Client {
         int port = configuration.getConnection().getPort();
         bootstrap.connect(host, port).addListener(new GenericFutureListener<ChannelFuture>() {
             @Override
-            public void operationComplete(ChannelFuture future) {
-                if (!future.isSuccess()) {
-                    LOGGER.warn("Reconnect attempt {} failed: {}", attempt,
-                            String.valueOf(future.cause()));
-                    // The channel never went active, so nothing else will drive the
-                    // next attempt.
-                    scheduleReconnect();
-                    return;
-                }
-                channelFuture = future;
-                awaitRegistrationThenResume(future, attempt);
+            public void operationComplete(final ChannelFuture future) {
+                connectionEventLoop.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        handleReconnectResult(future, attempt);
+                    }
+                });
             }
         });
     }
 
+    /** Runs on {@link #connectionEventLoop}. */
+    private void handleReconnectResult(ChannelFuture future, int attempt) {
+        if (!future.isSuccess()) {
+            LOGGER.warn("Reconnect attempt {} failed: {}", attempt,
+                    String.valueOf(future.cause()));
+            // The channel never went active, so nothing else will drive the next
+            // attempt.
+            scheduleReconnect();
+            return;
+        }
+        channelFuture = future;
+        awaitRegistrationThenResume(future, attempt);
+    }
+
+    /** Runs on {@link #connectionEventLoop}. */
     private void awaitRegistrationThenResume(final ChannelFuture future, final int attempt) {
         CompletableFuture<Void> handshake = registered;
         if (!configuration.getRegistration().isConfigured() || handshake == null) {
@@ -438,21 +562,34 @@ public abstract class AbstractClient implements Client {
         }
         handshake.whenComplete(new BiConsumer<Void, Throwable>() {
             @Override
-            public void accept(Void ignored, Throwable error) {
-                if (error == null) {
-                    reconnectSucceeded();
-                    return;
-                }
-                LOGGER.warn("Reconnected but registration failed on attempt {}: {}", attempt,
-                        String.valueOf(error));
-                noteRefusal(error);
-                // Closing fires channelInactive, which schedules the next attempt.
-                // Scheduling one here as well would run two chains at once.
-                future.channel().close();
+            public void accept(final Void ignored, final Throwable error) {
+                // Registration completes on whatever thread drove the handshake;
+                // rejoin the serial loop before touching any reconnect state.
+                connectionEventLoop.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        handleRegistrationResult(error, future, attempt);
+                    }
+                });
             }
         });
     }
 
+    /** Runs on {@link #connectionEventLoop}. */
+    private void handleRegistrationResult(Throwable error, ChannelFuture future, int attempt) {
+        if (error == null) {
+            reconnectSucceeded();
+            return;
+        }
+        LOGGER.warn("Reconnected but registration failed on attempt {}: {}", attempt,
+                String.valueOf(error));
+        noteRefusal(error);
+        // Closing fires channelInactive, which schedules the next attempt.
+        // Scheduling one here as well would run two chains at once.
+        future.channel().close();
+    }
+
+    /** Runs on {@link #connectionEventLoop}. */
     private void reconnectSucceeded() {
         reconnectAttempts.set(0);
         serverRefused.set(false);
@@ -461,9 +598,13 @@ public abstract class AbstractClient implements Client {
     }
 
     /**
-     * Publishes a connection-state change to every registered connection handler.
-     * One misbehaving handler must not stop the others, nor the reconnect logic
-     * that called this.
+     * Publishes a connection-state change to every registered connection handler,
+     * in registration order, one handler at a time. Always runs on
+     * {@link #connectionEventLoop}, so handlers across different events also never
+     * overlap and always see events in the order they happened. One misbehaving
+     * handler must not stop the others, nor the reconnect logic that called this;
+     * a slow one delays both the remaining handlers and the reconnect attempt that
+     * follows, since scheduling the next attempt happens on this same thread.
      */
     private void publishConnectionEvent(ConnectionEvent connectionEvent) {
         Event<ConnectionEvent> event = new Event<>(connectionEvent);
@@ -491,7 +632,10 @@ public abstract class AbstractClient implements Client {
 
     /**
      * Hook for subclasses to restore per-connection state, such as rejoining
-     * channels. Runs after registration completes on a reconnected channel.
+     * channels. Runs after registration completes on a reconnected channel, on
+     * {@link #connectionEventLoop} rather than the channel's own Netty event loop;
+     * blocking here delays later connection events and the reconnect attempts
+     * that follow them.
      */
     protected void onReconnected() {
         LOGGER.info("Reconnected");

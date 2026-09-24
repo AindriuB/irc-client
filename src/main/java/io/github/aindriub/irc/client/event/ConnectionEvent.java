@@ -10,6 +10,17 @@ import java.util.Objects;
  * {@link io.github.aindriub.irc.client.configuration.ClientConfigurationBuilder#connectionListener(EventHandler)}.
  * A deliberate {@code disconnect()}/shutdown publishes no event at all, since the
  * caller already knows it asked for that.
+ *
+ * <p><b>Delivery thread and ordering.</b> Every event for a given client is
+ * delivered on one dedicated thread, never the Netty event loop that happens to
+ * be handling the connection's I/O, and handlers are called one at a time, in
+ * registration order, for one event before the next event is even decided. Two
+ * events for the same client are therefore never delivered concurrently and
+ * always arrive in the order they actually happened (for example RECONNECTING 1
+ * before RECONNECTING 2, and never RECONNECTED before the RECONNECTING that led
+ * to it). A handler that blocks delays not only later events but the reconnect
+ * attempt that follows, since scheduling that attempt happens on the same
+ * thread; keep handlers fast, and hand off any real work elsewhere.
  */
 public final class ConnectionEvent {
 
@@ -33,6 +44,12 @@ public final class ConnectionEvent {
 
     private ConnectionEvent(Type type, int attempt, long delayMillis) {
         this.type = Objects.requireNonNull(type, "type");
+        if (attempt < 0) {
+            throw new IllegalArgumentException("attempt must not be negative: " + attempt);
+        }
+        if (delayMillis < 0) {
+            throw new IllegalArgumentException("delayMillis must not be negative: " + delayMillis);
+        }
         this.attempt = attempt;
         this.delayMillis = delayMillis;
     }
@@ -49,6 +66,7 @@ public final class ConnectionEvent {
      *
      * @param attempt     the attempt number, counting from 1
      * @param delayMillis the delay before this attempt actually runs
+     * @throws IllegalArgumentException if attempt or delayMillis is negative
      */
     public static ConnectionEvent reconnecting(int attempt, long delayMillis) {
         return new ConnectionEvent(Type.RECONNECTING, attempt, delayMillis);
@@ -65,6 +83,7 @@ public final class ConnectionEvent {
      * Reconnection was abandoned.
      *
      * @param attempts the number of attempts made before giving up
+     * @throws IllegalArgumentException if attempts is negative
      */
     public static ConnectionEvent gaveUp(int attempts) {
         return new ConnectionEvent(Type.GAVE_UP, attempts, 0);
@@ -88,5 +107,11 @@ public final class ConnectionEvent {
      */
     public long getDelayMillis() {
         return delayMillis;
+    }
+
+    @Override
+    public String toString() {
+        return "ConnectionEvent{type=" + type + ", attempt=" + attempt + ", delayMillis="
+                + delayMillis + '}';
     }
 }

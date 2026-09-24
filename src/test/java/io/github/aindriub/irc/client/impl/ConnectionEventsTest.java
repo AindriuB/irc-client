@@ -11,6 +11,12 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.LoggerFactory;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.AppenderBase;
 
 import io.github.aindriub.irc.client.command.PrivMsg;
 import io.github.aindriub.irc.client.configuration.ClientConfigurationBuilder;
@@ -32,10 +38,21 @@ public class ConnectionEventsTest {
     private StubIRCServer server;
     private BasicIRCClient client;
     private final List<ConnectionEvent> events = new CopyOnWriteArrayList<>();
+    private final List<ILoggingEvent> logged = new CopyOnWriteArrayList<>();
+    private final AppenderBase<ILoggingEvent> logAppender = new AppenderBase<ILoggingEvent>() {
+        @Override
+        protected void append(ILoggingEvent event) {
+            logged.add(event);
+        }
+    };
+    private Logger clientLogger;
 
     @Before
     public void setUp() throws IOException {
         server = new StubIRCServer();
+        clientLogger = (Logger) LoggerFactory.getLogger(AbstractClient.class);
+        logAppender.start();
+        clientLogger.addAppender(logAppender);
     }
 
     @After
@@ -48,6 +65,8 @@ public class ConnectionEventsTest {
             }
         }
         server.close();
+        clientLogger.detachAppender(logAppender);
+        logAppender.stop();
     }
 
     @Test
@@ -107,8 +126,12 @@ public class ConnectionEventsTest {
         server.dropConnection();
 
         assertTrue("expected a GAVE_UP event", awaitType(ConnectionEvent.Type.GAVE_UP, TIMEOUT));
-        // Nothing further should arrive once given up; wait a little and check.
-        Thread.sleep(300);
+        // Nothing further should arrive once given up: the reconnect chain has
+        // already stopped scheduling by the time GAVE_UP was observed, so
+        // disconnect() (which blocks until the connection-event thread has
+        // drained, see AbstractClient.disconnect()) is a deterministic point past
+        // which no more events could have snuck in, without an arbitrary sleep.
+        client.disconnect();
 
         long gaveUpCount = events.stream()
                 .filter(e -> e.getType() == ConnectionEvent.Type.GAVE_UP)
@@ -132,7 +155,12 @@ public class ConnectionEventsTest {
         assertTrue(server.awaitLine("NICK bot", TIMEOUT));
 
         server.dropConnection();
-        Thread.sleep(300);
+        assertTrue("expected DISCONNECTED", awaitEventCount(1, TIMEOUT));
+        // Reconnection is disabled, so nothing further is ever scheduled; calling
+        // disconnect() here is a deterministic marker (it blocks until the
+        // connection-event thread has drained, see AbstractClient.disconnect())
+        // rather than an arbitrary sleep hoping nothing else turns up.
+        client.disconnect();
 
         assertEquals(1, events.size());
         assertEquals(ConnectionEvent.Type.DISCONNECTED, events.get(0).getType());
@@ -144,10 +172,69 @@ public class ConnectionEventsTest {
         client.connect();
         assertTrue(server.awaitLine("NICK bot", TIMEOUT));
 
+        // disconnect() blocks until the connection-event thread has drained (see
+        // AbstractClient.disconnect()), so nothing more can arrive once it
+        // returns; no sleep needed to prove a negative.
         client.disconnect();
-        Thread.sleep(300);
 
         assertTrue("disconnect() must publish no ConnectionEvent at all", events.isEmpty());
+    }
+
+    @Test
+    public void reconnectAttemptsArriveStrictlyOrderedAndNeverOverlap() throws Exception {
+        // No backoff at all: with a naive implementation, attempt 2 could be
+        // scheduled and published before attempt 1's own publish has returned.
+        // A small sleep inside the handler below widens that race window so a
+        // regression would actually be caught rather than get lucky.
+        final java.util.concurrent.atomic.AtomicBoolean handlerRunning =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        final java.util.concurrent.atomic.AtomicBoolean overlapDetected =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
+        client = new BasicIRCClient(new ClientConfigurationBuilder()
+                .host("127.0.0.1")
+                .port(server.getPort())
+                .secure(false)
+                .nick("bot")
+                .reconnect(true)
+                .reconnectBackoff(0, 0, 0)
+                .registrationTimeout(1000)
+                .connectionListener(new EventHandler<ConnectionEvent>() {
+                    @Override
+                    public void publishEvent(Event<ConnectionEvent> event) {
+                        if (handlerRunning.getAndSet(true)) {
+                            overlapDetected.set(true);
+                        }
+                        try {
+                            Thread.sleep(5);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
+                        events.add(event.getPayload());
+                        handlerRunning.set(false);
+                    }
+                })
+                .build());
+        client.connect();
+        assertTrue(server.awaitLine("NICK bot", TIMEOUT));
+
+        // Close the port outright, rather than just dropping the connection, so
+        // every reconnect attempt after this one is refused at the TCP level.
+        server.close();
+
+        assertTrue("expected several RECONNECTING attempts against the closed port",
+                awaitAttempt(5, TIMEOUT));
+
+        int lastAttempt = 0;
+        for (ConnectionEvent event : events) {
+            if (event.getType() == ConnectionEvent.Type.RECONNECTING) {
+                assertTrue("attempt numbers must arrive strictly increasing: saw "
+                        + event.getAttempt() + " after " + lastAttempt,
+                        event.getAttempt() > lastAttempt);
+                lastAttempt = event.getAttempt();
+            }
+        }
+        assertFalse("the connection handler must never be invoked concurrently with itself",
+                overlapDetected.get());
     }
 
     @Test
@@ -187,8 +274,9 @@ public class ConnectionEventsTest {
     @Test
     public void aRefusedWriteFromTheEventLoopIsLoggedNotSilentlyDropped() throws Exception {
         // A burst of one and a queue depth of one: the first send from the event
-        // loop callback below takes the only token, and the second overflows the
-        // limiter's queue outright.
+        // loop callback below takes the only token, and every send after it
+        // overflows the limiter's queue outright, refusing it.
+        final int refusedSends = 100;
         final BasicIRCClient[] holder = new BasicIRCClient[1];
         client = new BasicIRCClient(new ClientConfigurationBuilder()
                 .host("127.0.0.1")
@@ -203,13 +291,12 @@ public class ConnectionEventsTest {
                     @Override
                     protected void onMessage(String target, String sender, String text,
                             io.github.aindriub.irc.client.message.IRCMessage raw) {
-                        // Three sends back to back from the event loop: the flood
-                        // configuration below leaves room for only one, so the rest
-                        // are refused, and none may throw since nothing here could
-                        // catch it.
-                        holder[0].sendCommand(new PrivMsg(target, "one"));
-                        holder[0].sendCommand(new PrivMsg(target, "two"));
-                        holder[0].sendCommand(new PrivMsg(target, "three"));
+                        // One send takes the only token; the rest, back to back from
+                        // the event loop, are all refused, and none may throw since
+                        // nothing here could catch it.
+                        for (int i = 0; i < 1 + refusedSends; i++) {
+                            holder[0].sendCommand(new PrivMsg(target, "msg" + i));
+                        }
                     }
                 })
                 .build());
@@ -219,10 +306,18 @@ public class ConnectionEventsTest {
 
         server.push(":someone!u@h PRIVMSG #chan :ping");
 
-        // Nothing to assert on the wire: the point is that this does not throw and
-        // the client is left usable, which the next line demonstrates.
-        Thread.sleep(200);
-        assertTrue(client.isConnected());
+        assertTrue("expected the refused writes to be logged, not silently dropped",
+                awaitLogCount(1, TIMEOUT));
+        // A burst of refusals must not turn into a burst of WARN lines: exactly one
+        // report, not one per refusal.
+        assertEquals("100 refusals must give one WARN with a count, not one per refusal", 1,
+                warnLogs().size());
+        ILoggingEvent report = warnLogs().get(0);
+        assertEquals(Level.WARN, report.getLevel());
+        String rendered = report.getFormattedMessage();
+        assertFalse("must never log the payload", rendered.contains("msg"));
+
+        assertTrue("the client must still be usable afterwards", client.isConnected());
     }
 
     private BasicIRCClient client(boolean reconnect, int maxAttempts) {
@@ -241,6 +336,24 @@ public class ConnectionEventsTest {
                     }
                 })
                 .build());
+    }
+
+    private List<ILoggingEvent> warnLogs() {
+        List<ILoggingEvent> warnings = new CopyOnWriteArrayList<>();
+        for (ILoggingEvent event : logged) {
+            if (event.getLevel() == Level.WARN) {
+                warnings.add(event);
+            }
+        }
+        return warnings;
+    }
+
+    private boolean awaitLogCount(int expected, long timeoutMillis) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (warnLogs().size() < expected && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        return warnLogs().size() >= expected;
     }
 
     private boolean awaitEventCount(int expected, long timeoutMillis) throws InterruptedException {

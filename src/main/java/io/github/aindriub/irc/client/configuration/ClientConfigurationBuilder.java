@@ -229,7 +229,9 @@ public class ClientConfigurationBuilder {
 
     /**
      * Subscribes to connection-state changes: a lost connection, a reconnect
-     * attempt, a successful reconnect, or giving up.
+     * attempt, a successful reconnect, or giving up. See {@link ConnectionEvent}
+     * for the delivery thread and ordering guarantee, and note in particular that
+     * a blocking handler delays the reconnect attempts themselves.
      */
     public ClientConfigurationBuilder connectionListener(EventHandler<ConnectionEvent> connectionHandler) {
         configuration.getConnectionHandlers()

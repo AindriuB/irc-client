@@ -115,12 +115,16 @@ public class ClientConfiguration {
     /**
      * Subscribers notified of connection-state changes: a lost connection, a
      * reconnect attempt, a successful reconnect, or giving up. A deliberate
-     * {@code disconnect()}/shutdown publishes nothing.
+     * {@code disconnect()}/shutdown publishes nothing. See
+     * {@link ConnectionEvent} for the delivery thread and ordering guarantee.
      */
     public List<EventHandler<ConnectionEvent>> getConnectionHandlers() {
         return connectionHandlers;
     }
 
+    /**
+     * Replaces the list returned by {@link #getConnectionHandlers()} wholesale.
+     */
     public void setConnectionHandlers(List<EventHandler<ConnectionEvent>> connectionHandlers) {
         this.connectionHandlers = connectionHandlers;
     }
